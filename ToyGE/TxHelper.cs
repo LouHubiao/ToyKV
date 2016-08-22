@@ -1,5 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using NNanomsg;
+using NNanomsg.Protocols;
+using System.Text;
+using System.Net;
 
 /*	
     In Memory:
@@ -66,18 +70,50 @@ namespace ToyGE
 {
     public class TxHelper
     {
-        #region search operation
+        //must first init
+        //tx port for listen
+        public static int txPort = 0;
+        //machines with tx index
+        public static Machines<Int64> machines;
+        //tx insert gap
+        public static Int16 gap;
 
+        #region search operation
         //convert memory Tx to object for random access
-        public static bool Get(Int64 key, Dictionary<Int16, MachineIndex<Int64>> machineIndex, out TX tx)
+        public static bool Get(Int64 key, out TX tx)
         {
             //get tx Addr
             IntPtr cellAddr;
-            Block<Int64> block;
-            if (Machines<Int64>.Get(machineIndex, key, Compare.CompareInt64, out cellAddr, out block) == false)
+            MachineIndex<Int64> machineIndex;
+            if (Machines<Int64>.Get(machines.machineIndexs, key, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
             {
-                tx = null;
-                return false;
+                if (machineIndex.machineIP != 0)
+                {
+                    //remote get
+                    using (var req = new RequestSocket())
+                    {
+                        string ipAddress = new IPAddress(BitConverter.GetBytes(machineIndex.machineIP)).ToString();
+                        req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                        //0 is get type
+                        req.Send(Encoding.Default.GetBytes("0" + key.ToString()));
+                        string cellStr = Encoding.Default.GetString(req.Receive());
+                        if (cellStr == "null")
+                        {
+                            tx = null;
+                            return false;
+                        }
+                        else
+                        {
+                            tx = TX.ConvertStringToJSONBack(cellStr);
+                            return true;
+                        }
+                    }
+                }
+                else
+                {
+                    tx = null;
+                    return false;
+                }
             }
 
             //get cell
@@ -132,20 +168,39 @@ namespace ToyGE
 
         #region insert operation
         //convert object to byte[] in memory
-        public static bool Set(TX tx, Dictionary<Int16, MachineIndex<Int64>> machineIndex, Int16 gap)
+        public static bool Set(TX tx)
         {
             //get block info
             IntPtr cellAddr;
-            Block<Int64> block;
-            Machines<Int64>.Get(machineIndex, tx.CellID, Compare.CompareInt64, out cellAddr, out block);
+            MachineIndex<Int64> machineIndex;
+            if (Machines<Int64>.Get(machines.machineIndexs, tx.CellID, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
+            {
+                if (machineIndex.machineIP != 0)
+                {
+                    //remote get
+                    using (var req = new RequestSocket())
+                    {
+                        string ipAddress = new IPAddress(BitConverter.GetBytes(machineIndex.machineIP)).ToString();
+                        req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                        //1 is get type
+                        req.Send(Encoding.Default.GetBytes("1" + tx.ToString()));
+                        string result = Encoding.Default.GetString(req.Receive());
+                        if (result == "false")
+                            return false;
+                        else
+                            return true;
+                    }
+                }
+            }
 
             //if has cell, update it
             if (cellAddr != IntPtr.Zero)
             {
-                //update
+                //update cell
             }
 
             //judge if has enough space for just cell 37
+            Block<Int64> block = machineIndex.block;
             IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
             if (nextFreeInBlock.ToInt64() == 0)
                 return false;   //update false
@@ -206,14 +261,56 @@ namespace ToyGE
         }
         #endregion insert operation
 
+        #region remote response
+        //response the remote request
+        public static void Response()
+        {
+            using (var rep = new ReplySocket())
+            {
+                rep.Bind("tcp://*:" + txPort + "");
+                var listener = new NanomsgListener();
+                listener.AddSocket(rep);
+                listener.ReceivedMessage += socketId =>
+                {
+                    string receiveStr = Encoding.Default.GetString(rep.Receive());
+                    if (receiveStr[0] == '0')
+                    {
+                        //GET response
+                        Int64 key = Int64.Parse(receiveStr);
+                        TX tx;
+                        if (Get(key, out tx))
+                            rep.Send(Encoding.Default.GetBytes(tx.ToString()));
+                        else
+                            rep.Send(Encoding.Default.GetBytes("null"));
+                    }
+                    else if (receiveStr[0] == '1')
+                    {
+                        //SET response
+                        receiveStr = receiveStr.Substring(1);
+                        TX tx = TX.ConvertStringToJSONBack(receiveStr);
+                        if (Set(tx))
+                            rep.Send(Encoding.Default.GetBytes("true"));
+                        else
+                            rep.Send(Encoding.Default.GetBytes("false"));
+
+                    }
+                };
+                while (true)
+                {
+                    listener.Listen(null);
+                }
+            }
+        }
+        #endregion remote response
+
         #region delete operation
         //delete tx cell
-        public static unsafe bool Delete(Int64 key, Dictionary<Int16, MachineIndex<Int64>> machineIndex)
+        public static unsafe bool Delete(Int64 key)
         {
             //get tx Addr
             IntPtr cellAddr;
-            Block<Int64> block;
-            if (Machines<Int64>.Get(machineIndex, key, Compare.CompareInt64, out cellAddr, out block) == false)
+            MachineIndex<Int64> machineIndex;
+            if (Machines<Int64>.Get(machines.machineIndexs, key, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
             {
                 return false;
             }
@@ -228,13 +325,13 @@ namespace ToyGE
             memAddrCopy = memAddrCopy + 1 + 8;
 
             //delete hash
-            MemString.Delete(ref memAddrCopy, block.freeList);
+            MemString.Delete(ref memAddrCopy, machineIndex.block.freeList);
 
             //jump time
             memAddrCopy = memAddrCopy + 8;
 
             //delete ins
-            MemList.Delete<In>(ref memAddrCopy, block.freeList, DeleteIn);
+            MemList.Delete<In>(ref memAddrCopy, machineIndex.block.freeList, DeleteIn);
 
             ////update cell link list
             //int length = 44;
@@ -263,10 +360,10 @@ namespace ToyGE
 
         #region foreach
         //foreach the index fo statistic
-        public static int Foreach(Dictionary<Int16, MachineIndex<Int64>> machineIndex, Delegate<Int64>.Statistic statistic)
+        public static int Foreach(Delegate<Int64>.Statistic statistic)
         {
             int result = 0;
-            foreach (MachineIndex<Int64> index in machineIndex.Values)
+            foreach (MachineIndex<Int64> index in machines.machineIndexs.Values)
             {
                 Block<Int64> block = index.block;
                 Node<Int64, IntPtr> node = block.blockIndex.root;

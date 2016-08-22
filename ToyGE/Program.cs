@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 
 namespace ToyGE
 {
@@ -19,9 +21,9 @@ namespace ToyGE
         static void Main(string[] args)
         {
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
-            initMachines();
+            initTx();
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
-            LoadTxs();
+            LoadTx(args[0]);
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
 
             while (true)
@@ -32,7 +34,7 @@ namespace ToyGE
                 {
                     Console.WriteLine("SearchNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
                     TX tx;
-                    TxHelper.Get(Int64.Parse(inputs[1]), machines.machineIndex, out tx);
+                    TxHelper.Get(Int64.Parse(inputs[1]), out tx);
                     if (tx != null)
                         Console.WriteLine(tx.ToString());
                     else
@@ -42,7 +44,7 @@ namespace ToyGE
                 else if (inputs[0] == "delete")
                 {
                     Console.WriteLine("DeleteNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
-                    TxHelper.Delete(Int64.Parse(inputs[1]), machines.machineIndex);
+                    TxHelper.Delete(Int64.Parse(inputs[1]));
                     Console.WriteLine("DeleteNode end..." + DateTime.Now.ToString("hh:mm:ss fff"));
                 }
                 else if (inputs[0] == "statistic")
@@ -50,12 +52,12 @@ namespace ToyGE
                     Console.WriteLine("statistic begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
                     if (inputs[1] == "count")
                     {
-                        int count = TxHelper.Foreach(machines.machineIndex, Statistic.Count_Statistic);
+                        int count = TxHelper.Foreach(Statistic.Count_Statistic);
                         Console.WriteLine("Count_Statistic:" + count);
                     }
                     if (inputs[1] == "amount")
                     {
-                        int count = TxHelper.Foreach(machines.machineIndex, Statistic.Amount_Statistic);
+                        int count = TxHelper.Foreach(Statistic.Amount_Statistic);
                         Console.WriteLine("Amount_Statistic:" + count);
                     }
                     Console.WriteLine("statistic end..." + DateTime.Now.ToString("hh:mm:ss fff"));
@@ -120,15 +122,26 @@ namespace ToyGE
             //}
         }
 
-        static void initMachines()
+        static void initTx()
         {
-            Dictionary<int, Int64> machineInfo = new Dictionary<int, Int64>();
-            machineInfo.Add(1, (Int64)1 << 32);
-            machines = new Machines<Int64>(1 << 30, machineInfo);
+            TxHelper.txPort = 7788;
+            TxHelper.gap = 0;
+
+            //<ip, memory space>
+            Dictionary<UInt32, int> machineInventory = new Dictionary<UInt32, int>();
+            //local: 10.172.154.30
+            UInt32 localIP = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
+            machineInventory.Add(localIP, 1 << 30);
+            //remote: 10.86.170.172
+            UInt32 remoteIP = BitConverter.ToUInt32(IPAddress.Parse("10.86.170.172").GetAddressBytes(), 0);
+            machineInventory.Add(remoteIP, 1 << 30);
+            TxHelper.machines = new Machines<Int64>(1 << 30, machineInventory);
+
+            listenBegin();
         }
 
         //load tx files
-        static unsafe void LoadTxs()
+        static unsafe void LoadTx(string dic)
         {
             Console.WriteLine("LoadTxs begin...");
 
@@ -136,8 +149,8 @@ namespace ToyGE
             //test: D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test
             //full: D:\\Bit\\TSLBit\\Generator\\bin\x64\\Debug\\fullBlocks
             //remote: D:\\v-hulou\\fullBlocks
-            DirectoryInfo dirInfo = new DirectoryInfo(@"D:\\Bit\\TSLBit\\Generator\\bin\x64\\Debug\\test");
-            foreach (FileInfo file in dirInfo.GetFiles("block90000.txt"))
+            DirectoryInfo dirInfo = new DirectoryInfo(dic);
+            foreach (FileInfo file in dirInfo.GetFiles("*.txt"))
             {
                 //read json line by line
                 using (StreamReader reader = new StreamReader(file.FullName))
@@ -150,7 +163,7 @@ namespace ToyGE
                         TX jsonBack = TX.ConvertStringToJSONBack(line);
 
                         //insert one node into memory
-                        TxHelper.Set(jsonBack, machines.machineIndex, gap);
+                        TxHelper.Set(jsonBack);
 
                         //foreach (string _out in jsonBack.outs)
                         //{
@@ -175,6 +188,15 @@ namespace ToyGE
             Console.WriteLine("LoadTxs end...");
         }
 
+        static void listenBegin()
+        {
+            Thread listener = new Thread(() =>
+            {
+                //begin listening
+                TxHelper.Response();
+            });
+            listener.Start();
+        }
 
     }
 }

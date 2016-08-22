@@ -73,12 +73,12 @@ namespace ToyGE
             int result = 0;
             result += 45;
             result += 3 + this.hash.Length;
-            foreach(In _in in this.ins)
+            foreach (In _in in this.ins)
             {
                 result += _in.addr.Length;
                 result += 8;
             }
-            foreach(string _out in this.outs)
+            foreach (string _out in this.outs)
             {
                 result += _out.Length;
             }
@@ -93,22 +93,22 @@ namespace ToyGE
             strBuilder.Append("{\"CellID\":");
             strBuilder.Append(this.CellID);
             strBuilder.Append(",\"hash\":");
-            strBuilder.Append(this.hash);
+            strBuilder.Append("\"" + this.hash + "\"");
             strBuilder.Append(",\"time\":");
             strBuilder.Append(this.time);
             strBuilder.Append(",\"ins\":[");
             foreach (In _in in this.ins)
             {
                 strBuilder.Append("{\"addr\":");
-                strBuilder.Append(this.time);
+                strBuilder.Append("\"" + _in.addr + "\"");
                 strBuilder.Append(",\"tx_index\":");
-                strBuilder.Append(this.time);
+                strBuilder.Append(_in.tx_index);
                 strBuilder.Append("},");
             }
             strBuilder.Append("],\"outs\":[");
-            foreach(string _out in this.outs)
+            foreach (string _out in this.outs)
             {
-                strBuilder.Append(_out);
+                strBuilder.Append("\"" + _out + "\"");
                 strBuilder.Append(",");
             }
             strBuilder.Append("],\"amount\":");
