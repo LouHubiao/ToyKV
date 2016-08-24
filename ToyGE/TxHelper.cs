@@ -4,6 +4,7 @@ using NNanomsg;
 using NNanomsg.Protocols;
 using System.Text;
 using System.Net;
+using Newtonsoft.Json;
 
 /*	
     In Memory:
@@ -80,71 +81,100 @@ namespace ToyGE
 
         #region search operation
         //convert memory Tx to object for random access
-        public static bool Get(Int64 key, out TX tx)
+        public static bool Get(Int64[] keys, ref List<TX> txs)
         {
+            //the out txs art not same order with keys 
+            Array.Sort(keys);
+
             //get tx Addr
             IntPtr cellAddr;
             MachineIndex<Int64> machineIndex;
-            if (Machines<Int64>.Get(machines.machineIndexs, key, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
+            UInt32 pendingIP = 0;
+            List<Int64> pendingKeys = new List<Int64>();
+            foreach (Int64 key in keys)
             {
-                if (machineIndex.machineIP != 0)
+                if (Machines<Int64>.Get(machines.machineIndexs, key, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
                 {
-                    //remote get
-                    using (var req = new RequestSocket())
+                    if (machineIndex.machineIP != 0)
                     {
-                        string ipAddress = new IPAddress(BitConverter.GetBytes(machineIndex.machineIP)).ToString();
-                        req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                        //0 is get type
-                        req.Send(Encoding.Default.GetBytes("0" + key.ToString()));
-                        string cellStr = Encoding.Default.GetString(req.Receive());
-                        if (cellStr == "null")
+                        //remote get
+                        if (machineIndex.machineIP == pendingIP)
                         {
-                            tx = null;
-                            return false;
+                            //add into pending req
+                            pendingKeys.Add(key);
                         }
                         else
                         {
-                            tx = TX.ConvertStringToJSONBack(cellStr);
-                            return true;
+                            if (pendingKeys.Count != 0)
+                            {
+                                //send pending req and get tx array
+                                using (var req = new RequestSocket())
+                                {
+                                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
+                                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                                    //generate request str
+                                    TxReq txReq = new TxReq();
+                                    txReq.reqType = "get";
+                                    foreach (Int64 pendingKey in pendingKeys)
+                                    {
+                                        txReq.body = '[' + pendingKey.ToString() + ']';
+                                    }
+                                    string reqStr = JsonConvert.SerializeObject(txReq);
+                                    string responseStr = Encoding.Default.GetString(req.Receive());
+                                    TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
+                                    foreach (TX responseTx in responseTxs)
+                                    {
+                                        txs.Add(responseTx);
+                                    }
+                                }
+                            }
+                            //update pending info
+                            pendingIP = machineIndex.machineIP;
+                            pendingKeys.Clear();
+                            pendingKeys.Add(key);
                         }
+                    }
+                    else
+                    {
+                        //error
+                        return false;
                     }
                 }
                 else
                 {
-                    tx = null;
-                    return false;
+                    //get cell in local machine
+                    TX tx = new TX();
+
+                    // judge isDelete
+                    byte status = MemByte.Get(ref cellAddr);
+                    byte mask = 0x80;
+                    if ((status & mask) != 0)
+                    {
+                        //deleted cell
+                        continue;
+                    }
+
+                    //read cellID
+                    tx.CellID = MemInt64.Get(ref cellAddr);
+
+                    //read hash
+                    tx.hash = MemString.Get(ref cellAddr);
+
+                    //read time
+                    tx.time = MemInt64.Get(ref cellAddr);
+
+                    //read ins
+                    tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
+
+                    //read outs
+                    tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
+
+                    //time amount
+                    tx.amount = MemInt64.Get(ref cellAddr);
+
+                    txs.Add(tx);
                 }
             }
-
-            //get cell
-            tx = new TX();
-
-            // judge isDelete
-            byte status = MemByte.Get(ref cellAddr);
-            byte mask = 0x80;
-            if ((status & mask) != 0)
-            {
-                tx = null;
-                return false;
-            }
-
-            //read cellID
-            tx.CellID = MemInt64.Get(ref cellAddr);
-
-            //read hash
-            tx.hash = MemString.Get(ref cellAddr);
-
-            //read time
-            tx.time = MemInt64.Get(ref cellAddr);
-
-            //read ins
-            tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
-
-            //read outs
-            tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
-
-            //time amount
-            tx.amount = MemInt64.Get(ref cellAddr);
 
             return true;
         }
@@ -182,13 +212,21 @@ namespace ToyGE
                     {
                         string ipAddress = new IPAddress(BitConverter.GetBytes(machineIndex.machineIP)).ToString();
                         req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                        //1 is get type
-                        req.Send(Encoding.Default.GetBytes("1" + tx.ToString()));
-                        string result = Encoding.Default.GetString(req.Receive());
-                        if (result == "false")
-                            return false;
-                        else
+                        TxReq txReq = new TxReq();
+                        txReq.reqType = "set";
+                        txReq.body = '[' + tx.ToString() + ']';
+                        string reqStr = JsonConvert.SerializeObject(txReq);
+                        req.Send(Encoding.Default.GetBytes(reqStr));
+                        string resultStr = Encoding.Default.GetString(req.Receive());
+                        string[] results = JsonConvert.DeserializeObject<string[]>(resultStr);
+                        if (results[0] == "1")
+                        {
                             return true;
+                        }
+                        else
+                        {
+                            return false;
+                        }
                     }
                 }
             }
@@ -272,28 +310,39 @@ namespace ToyGE
                 listener.AddSocket(rep);
                 listener.ReceivedMessage += socketId =>
                 {
-                    string receiveStr = Encoding.Default.GetString(rep.Receive());
-                    if (receiveStr[0] == '0')
+                    string receiveJson = Encoding.Default.GetString(rep.Receive());
+                    var receiveOjb = JsonConvert.DeserializeObject<TxReq>(receiveJson);
+                    StringBuilder responseStr = new StringBuilder("[");
+
+                    if (receiveOjb.reqType == "get")
                     {
                         //GET response
-                        Int64 key = Int64.Parse(receiveStr);
-                        TX tx;
-                        if (Get(key, out tx))
-                            rep.Send(Encoding.Default.GetBytes(tx.ToString()));
-                        else
-                            rep.Send(Encoding.Default.GetBytes("null"));
+                        string[] keys = JsonConvert.DeserializeObject<string[]>(receiveOjb.body);
+                        foreach (string item in keys)
+                        {
+                            Int64 key = Int64.Parse(item);
+                            TX tx;
+                            if (Get(key, out tx))
+                                responseStr.Append(tx.ToString() + ",");
+                            else
+                                responseStr.Append("{},");
+                        }
                     }
-                    else if (receiveStr[0] == '1')
+                    else if (receiveOjb.reqType == "set")
                     {
                         //SET response
-                        receiveStr = receiveStr.Substring(1);
-                        TX tx = TX.ConvertStringToJSONBack(receiveStr);
-                        if (Set(tx))
-                            rep.Send(Encoding.Default.GetBytes("true"));
-                        else
-                            rep.Send(Encoding.Default.GetBytes("false"));
-
+                        TX[] txs = JsonConvert.DeserializeObject<TX[]>(receiveOjb.body);
+                        foreach (TX tx in txs)
+                        {
+                            if (Set(tx))
+                                responseStr.Append("1,");
+                            else
+                                responseStr.Append("0,");
+                        }
                     }
+                    responseStr.Remove(responseStr.Length - 1, 1);
+                    responseStr.Append("]");
+                    rep.Send(Encoding.Default.GetBytes(responseStr.ToString()));
                 };
                 while (true)
                 {
