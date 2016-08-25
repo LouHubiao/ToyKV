@@ -33,10 +33,11 @@ namespace ToyGE
                 if (inputs[0] == "search")
                 {
                     Console.WriteLine("SearchNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
-                    TX tx;
-                    TxHelper.Get(Int64.Parse(inputs[1]), out tx);
-                    if (tx != null)
-                        Console.WriteLine(tx.ToString());
+                    Int64[] keys = new Int64[] { Int64.Parse(inputs[1])};
+                    List<TX> txs = new List<TX>();
+                    TxHelper.Get(keys, ref txs);
+                    if (txs.Count != 0)
+                        Console.WriteLine(txs[0].ToString());
                     else
                         Console.WriteLine("null!");
                     Console.WriteLine("SearchNode end..." + DateTime.Now.ToString("hh:mm:ss fff"));
@@ -157,13 +158,28 @@ namespace ToyGE
                 {
                     string line;
                     IntPtr preAddr = new IntPtr(0);
+                    int txsIndex = 0;
+                    TX[] txs = new TX[50];
+                    List<int> setResults = new List<int>();
                     while (null != (line = reader.ReadLine()))
                     {
                         //string to object
                         TX jsonBack = TX.ConvertStringToJSONBack(line);
 
-                        //insert one node into memory
-                        TxHelper.Set(jsonBack);
+                        if (txsIndex < txs.Length)
+                        {
+                            //append
+                            txs[txsIndex] = jsonBack;
+                        }
+                        else
+                        {
+                            //insert one node into memory
+                            TxHelper.Set(txs, ref setResults);
+
+                            //clear txs
+                            txsIndex = 0;
+                        }
+                        
 
                         //foreach (string _out in jsonBack.outs)
                         //{

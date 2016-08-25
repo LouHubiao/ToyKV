@@ -115,10 +115,14 @@ namespace ToyGE
                                     //generate request str
                                     TxReq txReq = new TxReq();
                                     txReq.reqType = "get";
+                                    StringBuilder body = new StringBuilder('[');
                                     foreach (Int64 pendingKey in pendingKeys)
                                     {
-                                        txReq.body = '[' + pendingKey.ToString() + ']';
+                                        txReq.body = pendingKey.ToString() + ',';
                                     }
+                                    body.Remove(body.Length - 1, 1);
+                                    body.Append(']');
+                                    txReq.body = body.ToString();
                                     string reqStr = JsonConvert.SerializeObject(txReq);
                                     string responseStr = Encoding.Default.GetString(req.Receive());
                                     TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
@@ -198,76 +202,107 @@ namespace ToyGE
 
         #region insert operation
         //convert object to byte[] in memory
-        public static bool Set(TX tx)
+        public static bool Set(TX[] txs, ref List<int> setResults)
         {
+            //sort txs, for insert multiply txs
+            Array.Sort(txs);
+
             //get block info
             IntPtr cellAddr;
             MachineIndex<Int64> machineIndex;
-            if (Machines<Int64>.Get(machines.machineIndexs, tx.CellID, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
+            UInt32 pendingIP = 0;
+            List<TX> pendingTxs = new List<TX>();
+            foreach (TX tx in txs)
             {
-                if (machineIndex.machineIP != 0)
+                if (Machines<Int64>.Get(machines.machineIndexs, tx.CellID, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
                 {
-                    //remote get
-                    using (var req = new RequestSocket())
+                    if (machineIndex.machineIP != 0)
                     {
-                        string ipAddress = new IPAddress(BitConverter.GetBytes(machineIndex.machineIP)).ToString();
-                        req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                        TxReq txReq = new TxReq();
-                        txReq.reqType = "set";
-                        txReq.body = '[' + tx.ToString() + ']';
-                        string reqStr = JsonConvert.SerializeObject(txReq);
-                        req.Send(Encoding.Default.GetBytes(reqStr));
-                        string resultStr = Encoding.Default.GetString(req.Receive());
-                        string[] results = JsonConvert.DeserializeObject<string[]>(resultStr);
-                        if (results[0] == "1")
+                        //remote get
+                        if (machineIndex.machineIP == pendingIP)
                         {
-                            return true;
+                            //add into pending req
+                            pendingTxs.Add(tx);
                         }
                         else
                         {
-                            return false;
+                            if (pendingTxs.Count != 0)
+                            {
+                                //send pending req
+                                using (var req = new RequestSocket())
+                                {
+                                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
+                                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                                    //generate request str
+                                    TxReq txReq = new TxReq();
+                                    txReq.reqType = "set";
+                                    StringBuilder body = new StringBuilder('[');
+                                    foreach (TX pendingTx in pendingTxs)
+                                    {
+                                        txReq.body = pendingTx.ToString() + ',';
+                                    }
+                                    body.Remove(body.Length - 1, 1);
+                                    body.Append(']');
+                                    txReq.body = body.ToString();
+                                    string reqStr = JsonConvert.SerializeObject(txReq);
+                                    string responseStr = Encoding.Default.GetString(req.Receive());
+                                    int[] responses = JsonConvert.DeserializeObject<int[]>(responseStr);
+                                    foreach (int response in responses)
+                                    {
+                                        setResults.Add(response);
+                                    }
+                                }
+                            }
+                            //update pending info
+                            pendingIP = machineIndex.machineIP;
+                            pendingTxs.Clear();
+                            pendingTxs.Add(tx);
                         }
                     }
                 }
+                else
+                {
+                    //if has cell, update it
+                    if (cellAddr != IntPtr.Zero)
+                    {
+                        //update cell
+                    }
+
+                    //judge if has enough space for just cell 37
+                    Block<Int64> block = machineIndex.block;
+                    IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
+                    if (nextFreeInBlock.ToInt64() == 0)
+                        return false;   //update false
+
+                    B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
+
+                    //pointer for insert unsure length type, 37 is the length of tx
+                    IntPtr nextPartAddr = nextFreeInBlock + 37;
+
+                    //insert cellStatus
+                    MemByte.Set(ref nextFreeInBlock, (byte)0);
+
+                    //insert CellID
+                    MemInt64.Set(ref nextFreeInBlock, tx.CellID);
+
+                    //insert hash(X)
+                    MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
+
+                    //insert time
+                    MemInt64.Set(ref nextFreeInBlock, tx.time);
+
+                    //insert ins(X)
+                    MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
+
+                    //insert outs(X)
+                    MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
+
+                    //insert amount
+                    MemInt64.Set(ref nextFreeInBlock, tx.amount);
+
+                    setResults.Add(1);
+                }
             }
-
-            //if has cell, update it
-            if (cellAddr != IntPtr.Zero)
-            {
-                //update cell
-            }
-
-            //judge if has enough space for just cell 37
-            Block<Int64> block = machineIndex.block;
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
-            if (nextFreeInBlock.ToInt64() == 0)
-                return false;   //update false
-
-            B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
-
-            //pointer for insert unsure length type, 37 is the length of tx
-            IntPtr nextPartAddr = nextFreeInBlock + 37;
-
-            //insert cellStatus
-            MemByte.Set(ref nextFreeInBlock, (byte)0);
-
-            //insert CellID
-            MemInt64.Set(ref nextFreeInBlock, tx.CellID);
-
-            //insert hash(X)
-            MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
-
-            //insert time
-            MemInt64.Set(ref nextFreeInBlock, tx.time);
-
-            //insert ins(X)
-            MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
-
-            //insert outs(X)
-            MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
-
-            //insert amount
-            MemInt64.Set(ref nextFreeInBlock, tx.amount);
 
             return true;
         }
