@@ -141,43 +141,43 @@ namespace ToyGE
                     }
                     else
                     {
-                        //get cell in local machine
-                        TX tx = new TX();
-
-                        // judge isDelete
-                        byte status = MemByte.Get(ref cellAddr);
-                        byte mask = 0x80;
-                        if ((status & mask) != 0)
-                        {
-                            //deleted cell
-                            continue;
-                        }
-
-                        //read cellID
-                        tx.CellID = MemInt64.Get(ref cellAddr);
-
-                        //read hash
-                        tx.hash = MemString.Get(ref cellAddr);
-
-                        //read time
-                        tx.time = MemInt64.Get(ref cellAddr);
-
-                        //read ins
-                        tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
-
-                        //read outs
-                        tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
-
-                        //time amount
-                        tx.amount = MemInt64.Get(ref cellAddr);
-
-                        txs.Add(tx);
+                        //error
+                        return false;
                     }
                 }
                 else
                 {
-                    //error
-                    return false;
+                    //get cell in local machine
+                    TX tx = new TX();
+
+                    // judge isDelete
+                    byte status = MemByte.Get(ref cellAddr);
+                    byte mask = 0x80;
+                    if ((status & mask) != 0)
+                    {
+                        //deleted cell
+                        continue;
+                    }
+
+                    //read cellID
+                    tx.CellID = MemInt64.Get(ref cellAddr);
+
+                    //read hash
+                    tx.hash = MemString.Get(ref cellAddr);
+
+                    //read time
+                    tx.time = MemInt64.Get(ref cellAddr);
+
+                    //read ins
+                    tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
+
+                    //read outs
+                    tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
+
+                    //time amount
+                    tx.amount = MemInt64.Get(ref cellAddr);
+
+                    txs.Add(tx);
                 }
             }
 
