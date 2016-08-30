@@ -43,7 +43,7 @@ namespace ToyGE
         public string body;
     }
 
-    public class TX: IComparer
+    public class TX : IComparable<TX>
     {
         [JsonProperty("CellID")]
         public Int64 CellID;
@@ -128,16 +128,9 @@ namespace ToyGE
             return strBuilder.ToString();
         }
 
-        int Compare(object obj1, object obj2)
+        public int CompareTo(TX other)
         {
-            TX tx1 = obj1 as TX;
-            TX tx2 = obj2 as TX;
-            if (tx1.CellID > tx2.CellID)
-                return 1;
-            if (tx1.CellID < tx2.CellID)
-                return -1;
-            else
-                return 0;
+            return CellID.CompareTo(other.CellID);
         }
 
     }

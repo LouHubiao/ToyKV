@@ -169,7 +169,7 @@ namespace ToyGE
                         if (txsIndex < txs.Length)
                         {
                             //append
-                            txs[txsIndex] = jsonBack;
+                            txs[txsIndex++] = jsonBack;
                         }
                         else
                         {

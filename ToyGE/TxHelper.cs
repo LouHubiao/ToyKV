@@ -115,15 +115,16 @@ namespace ToyGE
                                     //generate request str
                                     TxReq txReq = new TxReq();
                                     txReq.reqType = "get";
-                                    StringBuilder body = new StringBuilder('[');
+                                    StringBuilder body = new StringBuilder("[");
                                     foreach (Int64 pendingKey in pendingKeys)
                                     {
-                                        txReq.body = pendingKey.ToString() + ',';
+                                        body.Append(pendingKey.ToString() + ',');
                                     }
                                     body.Remove(body.Length - 1, 1);
                                     body.Append(']');
                                     txReq.body = body.ToString();
                                     string reqStr = JsonConvert.SerializeObject(txReq);
+                                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
                                     string responseStr = Encoding.Default.GetString(req.Receive());
                                     TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
                                     foreach (TX responseTx in responseTxs)
@@ -140,43 +141,72 @@ namespace ToyGE
                     }
                     else
                     {
-                        //error
-                        return false;
+                        //get cell in local machine
+                        TX tx = new TX();
+
+                        // judge isDelete
+                        byte status = MemByte.Get(ref cellAddr);
+                        byte mask = 0x80;
+                        if ((status & mask) != 0)
+                        {
+                            //deleted cell
+                            continue;
+                        }
+
+                        //read cellID
+                        tx.CellID = MemInt64.Get(ref cellAddr);
+
+                        //read hash
+                        tx.hash = MemString.Get(ref cellAddr);
+
+                        //read time
+                        tx.time = MemInt64.Get(ref cellAddr);
+
+                        //read ins
+                        tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
+
+                        //read outs
+                        tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
+
+                        //time amount
+                        tx.amount = MemInt64.Get(ref cellAddr);
+
+                        txs.Add(tx);
                     }
                 }
                 else
                 {
-                    //get cell in local machine
-                    TX tx = new TX();
+                    //error
+                    return false;
+                }
+            }
 
-                    // judge isDelete
-                    byte status = MemByte.Get(ref cellAddr);
-                    byte mask = 0x80;
-                    if ((status & mask) != 0)
+            if (pendingKeys.Count != 0)
+            {
+                //send pending req and get tx array
+                using (var req = new RequestSocket())
+                {
+                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
+                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                    //generate request str
+                    TxReq txReq = new TxReq();
+                    txReq.reqType = "get";
+                    StringBuilder body = new StringBuilder("[");
+                    foreach (Int64 pendingKey in pendingKeys)
                     {
-                        //deleted cell
-                        continue;
+                        body.Append(pendingKey.ToString() + ',');
                     }
-
-                    //read cellID
-                    tx.CellID = MemInt64.Get(ref cellAddr);
-
-                    //read hash
-                    tx.hash = MemString.Get(ref cellAddr);
-
-                    //read time
-                    tx.time = MemInt64.Get(ref cellAddr);
-
-                    //read ins
-                    tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
-
-                    //read outs
-                    tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
-
-                    //time amount
-                    tx.amount = MemInt64.Get(ref cellAddr);
-
-                    txs.Add(tx);
+                    body.Remove(body.Length - 1, 1);
+                    body.Append(']');
+                    txReq.body = body.ToString();
+                    string reqStr = JsonConvert.SerializeObject(txReq);
+                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
+                    string responseStr = Encoding.Default.GetString(req.Receive());
+                    TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
+                    foreach (TX responseTx in responseTxs)
+                    {
+                        txs.Add(responseTx);
+                    }
                 }
             }
 
@@ -236,15 +266,16 @@ namespace ToyGE
                                     //generate request str
                                     TxReq txReq = new TxReq();
                                     txReq.reqType = "set";
-                                    StringBuilder body = new StringBuilder('[');
+                                    StringBuilder body = new StringBuilder("[");
                                     foreach (TX pendingTx in pendingTxs)
                                     {
-                                        txReq.body = pendingTx.ToString() + ',';
+                                        body.Append(pendingTx.ToString() + ',');
                                     }
                                     body.Remove(body.Length - 1, 1);
                                     body.Append(']');
                                     txReq.body = body.ToString();
                                     string reqStr = JsonConvert.SerializeObject(txReq);
+                                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
                                     string responseStr = Encoding.Default.GetString(req.Receive());
                                     int[] responses = JsonConvert.DeserializeObject<int[]>(responseStr);
                                     foreach (int response in responses)
@@ -259,48 +290,76 @@ namespace ToyGE
                             pendingTxs.Add(tx);
                         }
                     }
+                    else
+                    {
+                        //insert cell
+                        //judge if has enough space for just cell 37
+                        Block<Int64> block = machineIndex.block;
+                        IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
+                        if (nextFreeInBlock.ToInt64() == 0)
+                            return false;   //update false
+
+                        B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
+
+                        //pointer for insert unsure length type, 37 is the length of tx
+                        IntPtr nextPartAddr = nextFreeInBlock + 37;
+
+                        //insert cellStatus
+                        MemByte.Set(ref nextFreeInBlock, (byte)0);
+
+                        //insert CellID
+                        MemInt64.Set(ref nextFreeInBlock, tx.CellID);
+
+                        //insert hash(X)
+                        MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
+
+                        //insert time
+                        MemInt64.Set(ref nextFreeInBlock, tx.time);
+
+                        //insert ins(X)
+                        MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
+
+                        //insert outs(X)
+                        MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
+
+                        //insert amount
+                        MemInt64.Set(ref nextFreeInBlock, tx.amount);
+
+                        setResults.Add(1);
+                    }
                 }
                 else
                 {
                     //if has cell, update it
-                    if (cellAddr != IntPtr.Zero)
+                }
+            }
+
+            if (pendingTxs.Count != 0)
+            {
+                //send pending req
+                using (var req = new RequestSocket())
+                {
+                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
+                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                    //generate request str
+                    TxReq txReq = new TxReq();
+                    txReq.reqType = "set";
+                    StringBuilder body = new StringBuilder("[");
+                    foreach (TX pendingTx in pendingTxs)
                     {
-                        //update cell
+                        body.Append(pendingTx.ToString() + ',');
                     }
-
-                    //judge if has enough space for just cell 37
-                    Block<Int64> block = machineIndex.block;
-                    IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
-                    if (nextFreeInBlock.ToInt64() == 0)
-                        return false;   //update false
-
-                    B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
-
-                    //pointer for insert unsure length type, 37 is the length of tx
-                    IntPtr nextPartAddr = nextFreeInBlock + 37;
-
-                    //insert cellStatus
-                    MemByte.Set(ref nextFreeInBlock, (byte)0);
-
-                    //insert CellID
-                    MemInt64.Set(ref nextFreeInBlock, tx.CellID);
-
-                    //insert hash(X)
-                    MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
-
-                    //insert time
-                    MemInt64.Set(ref nextFreeInBlock, tx.time);
-
-                    //insert ins(X)
-                    MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
-
-                    //insert outs(X)
-                    MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
-
-                    //insert amount
-                    MemInt64.Set(ref nextFreeInBlock, tx.amount);
-
-                    setResults.Add(1);
+                    body.Remove(body.Length - 1, 1);
+                    body.Append(']');
+                    txReq.body = body.ToString();
+                    string reqStr = JsonConvert.SerializeObject(txReq);
+                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
+                    string responseStr = Encoding.Default.GetString(req.Receive());
+                    int[] responses = JsonConvert.DeserializeObject<int[]>(responseStr);
+                    foreach (int response in responses)
+                    {
+                        setResults.Add(response);
+                    }
                 }
             }
 
@@ -352,27 +411,36 @@ namespace ToyGE
                     if (receiveOjb.reqType == "get")
                     {
                         //GET response
-                        string[] keys = JsonConvert.DeserializeObject<string[]>(receiveOjb.body);
-                        foreach (string item in keys)
+                        Int64[] keys = JsonConvert.DeserializeObject<Int64[]>(receiveOjb.body);
+                        List<TX> txs = new List<TX>();
+                        if (Get(keys, ref txs))
                         {
-                            Int64 key = Int64.Parse(item);
-                            TX tx;
-                            if (Get(key, out tx))
+                            foreach (TX tx in txs)
+                            {
                                 responseStr.Append(tx.ToString() + ",");
-                            else
-                                responseStr.Append("{},");
+                            }
+                        }
+                        else
+                        {
+
                         }
                     }
                     else if (receiveOjb.reqType == "set")
                     {
                         //SET response
                         TX[] txs = JsonConvert.DeserializeObject<TX[]>(receiveOjb.body);
-                        foreach (TX tx in txs)
+                        List<int> setResults = new List<int>();
+                        if (Set(txs, ref setResults))
                         {
-                            if (Set(tx))
-                                responseStr.Append("1,");
-                            else
-                                responseStr.Append("0,");
+                            foreach (int setResult in setResults)
+                            {
+                                responseStr.Append(setResult.ToString() + ",");
+                            }
+
+                        }
+                        else
+                        {
+
                         }
                     }
                     responseStr.Remove(responseStr.Length - 1, 1);
