@@ -178,6 +178,7 @@ namespace ToyGE
 
                             //clear txs
                             txsIndex = 0;
+                            txs[txsIndex++] = jsonBack;
                         }
                         
 

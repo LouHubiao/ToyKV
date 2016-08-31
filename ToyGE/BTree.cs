@@ -119,10 +119,13 @@ namespace ToyGE
         /// <returns>pos in this node</returns>
         static int SearchKeyInNode(List<K> keys, K key, Delegate<K>.CompareT compare)
         {
-            int lo = -1;
-            int hi = keys.Count;
-            int mid = -1;
-            while (lo + 1 < hi)
+            if (keys == null || keys.Count == 0)
+                return 0;
+
+            int lo = 0;
+            int hi = keys.Count - 1;
+            int mid = 0;
+            while (lo <= hi)
             {
                 mid = (lo + hi) / 2;
                 if (compare(keys[mid], key) == 0)
@@ -131,14 +134,14 @@ namespace ToyGE
                 }
                 else if (compare(keys[mid], key) < 0)
                 {
-                    lo = mid;
+                    lo = mid + 1;
                 }
                 else
                 {
-                    hi = mid;
+                    hi = mid - 1;
                 }
             }
-            return hi;
+            return lo;
         }
 
         /// <summary>
