@@ -445,14 +445,13 @@ namespace ToyGE
                     {
                         //SET response
                         TX[] txs = JsonConvert.DeserializeObject<TX[]>(receiveOjb.body);
-                        List<int> setResults = new List<int>();
-                        if (Set(txs, ref setResults))
+                        List<TX> outResults = new List<TX>();
+                        if (Set(txs, ref outResults))
                         {
-                            foreach (int setResult in setResults)
+                            foreach (TX setResult in outResults)
                             {
                                 responseStr.Append(setResult.ToString() + ",");
                             }
-
                         }
                         else
                         {
