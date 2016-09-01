@@ -5,6 +5,7 @@ using NNanomsg.Protocols;
 using System.Text;
 using System.Net;
 using Newtonsoft.Json;
+using System.Threading;
 
 /*	
     In Memory:
@@ -279,11 +280,18 @@ namespace ToyGE
                     else
                     {
                         //insert cell
-                        if (SetTx(tx, machineIndex) == false)
+                        Tuple<TX, MachineIndex<Int64>> threadPara = new Tuple<TX, MachineIndex<long>>(tx, machineIndex);
+                        TX setResult = null;
+                        ThreadPool.QueueUserWorkItem(new WaitCallback(delegate (object state)
                         {
-                            //isnert failed
-                            outResults.Add(tx);
-                        }
+                            if (SetTx(threadPara) == false)
+                            {
+                                //isnert failed
+                                setResult = tx;
+                            }
+                        }), null);
+                        if (setResult != null)
+                            outResults.Add(setResult);
                     }
                 }
                 else
@@ -305,8 +313,11 @@ namespace ToyGE
             return true;
         }
 
-        private static bool SetTx(TX tx, MachineIndex<Int64> machineIndex)
+        private static bool SetTx(Tuple<TX, MachineIndex<Int64>> threadPara)
         {
+            TX tx = threadPara.Item1;
+            MachineIndex<Int64> machineIndex = threadPara.Item2;
+
             //judge if has enough space for just cell 37
             Block<Int64> block = machineIndex.block;
             IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
@@ -458,7 +469,8 @@ namespace ToyGE
 
                         }
                     }
-                    responseStr.Remove(responseStr.Length - 1, 1);
+                    if (responseStr.Length > 1)
+                        responseStr.Remove(responseStr.Length - 1, 1);
                     responseStr.Append("]");
                     rep.Send(Encoding.Default.GetBytes(responseStr.ToString()));
                 };
