@@ -231,8 +231,13 @@ namespace ToyGE
 
 
         #region insert operation
-        //convert object to byte[] in memory
-        public static bool Set(TX[] txs, ref List<int> setResults)
+        /// <summary>
+        /// convert object to byte[] in memory
+        /// </summary>
+        /// <param name="txs"></param>
+        /// <param name="outResults">failed insert txs</param>
+        /// <returns></returns>
+        public static bool Set(TX[] txs, ref List<TX> outResults)
         {
             //sort txs, for insert multiply txs
             Array.Sort(txs);
@@ -259,29 +264,10 @@ namespace ToyGE
                             if (pendingTxs.Count != 0)
                             {
                                 //send pending req
-                                using (var req = new RequestSocket())
+                                if (RemoteSet(pendingIP, pendingTxs, ref outResults) == false)
                                 {
-                                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
-                                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                                    //generate request str
-                                    TxReq txReq = new TxReq();
-                                    txReq.reqType = "set";
-                                    StringBuilder body = new StringBuilder("[");
-                                    foreach (TX pendingTx in pendingTxs)
-                                    {
-                                        body.Append(pendingTx.ToString() + ',');
-                                    }
-                                    body.Remove(body.Length - 1, 1);
-                                    body.Append(']');
-                                    txReq.body = body.ToString();
-                                    string reqStr = JsonConvert.SerializeObject(txReq);
-                                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
-                                    string responseStr = Encoding.Default.GetString(req.Receive());
-                                    int[] responses = JsonConvert.DeserializeObject<int[]>(responseStr);
-                                    foreach (int response in responses)
-                                    {
-                                        setResults.Add(response);
-                                    }
+                                    //all failed
+                                    outResults = new List<TX>(txs);
                                 }
                             }
                             //update pending info
@@ -293,39 +279,11 @@ namespace ToyGE
                     else
                     {
                         //insert cell
-                        //judge if has enough space for just cell 37
-                        Block<Int64> block = machineIndex.block;
-                        IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
-                        if (nextFreeInBlock.ToInt64() == 0)
-                            return false;   //update false
-
-                        B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
-
-                        //pointer for insert unsure length type, 37 is the length of tx
-                        IntPtr nextPartAddr = nextFreeInBlock + 37;
-
-                        //insert cellStatus
-                        MemByte.Set(ref nextFreeInBlock, (byte)0);
-
-                        //insert CellID
-                        MemInt64.Set(ref nextFreeInBlock, tx.CellID);
-
-                        //insert hash(X)
-                        MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
-
-                        //insert time
-                        MemInt64.Set(ref nextFreeInBlock, tx.time);
-
-                        //insert ins(X)
-                        MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
-
-                        //insert outs(X)
-                        MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
-
-                        //insert amount
-                        MemInt64.Set(ref nextFreeInBlock, tx.amount);
-
-                        setResults.Add(1);
+                        if (SetTx(tx, machineIndex) == false)
+                        {
+                            //isnert failed
+                            outResults.Add(tx);
+                        }
                     }
                 }
                 else
@@ -337,32 +295,90 @@ namespace ToyGE
             if (pendingTxs.Count != 0)
             {
                 //send pending req
-                using (var req = new RequestSocket())
+                if (RemoteSet(pendingIP, pendingTxs, ref outResults) == false)
                 {
-                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
-                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                    //generate request str
-                    TxReq txReq = new TxReq();
-                    txReq.reqType = "set";
-                    StringBuilder body = new StringBuilder("[");
-                    foreach (TX pendingTx in pendingTxs)
-                    {
-                        body.Append(pendingTx.ToString() + ',');
-                    }
-                    body.Remove(body.Length - 1, 1);
-                    body.Append(']');
-                    txReq.body = body.ToString();
-                    string reqStr = JsonConvert.SerializeObject(txReq);
-                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
-                    string responseStr = Encoding.Default.GetString(req.Receive());
-                    int[] responses = JsonConvert.DeserializeObject<int[]>(responseStr);
-                    foreach (int response in responses)
-                    {
-                        setResults.Add(response);
-                    }
+                    //all failed
+                    outResults = new List<TX>(txs);
                 }
             }
 
+            return true;
+        }
+
+        private static bool SetTx(TX tx, MachineIndex<Int64> machineIndex)
+        {
+            //judge if has enough space for just cell 37
+            Block<Int64> block = machineIndex.block;
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
+            if (nextFreeInBlock.ToInt64() == 0)
+                return false;   //update false
+
+            B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
+
+            //pointer for insert unsure length type, 37 is the length of tx
+            IntPtr nextPartAddr = nextFreeInBlock + 37;
+
+            //insert cellStatus
+            MemByte.Set(ref nextFreeInBlock, (byte)0);
+
+            //insert CellID
+            MemInt64.Set(ref nextFreeInBlock, tx.CellID);
+
+            //insert hash(X)
+            MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
+
+            //insert time
+            MemInt64.Set(ref nextFreeInBlock, tx.time);
+
+            //insert ins(X)
+            MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
+
+            //insert outs(X)
+            MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
+
+            //insert amount
+            MemInt64.Set(ref nextFreeInBlock, tx.amount);
+
+            return true;
+        }
+
+        /// <summary>
+        /// remote set txs
+        /// </summary>
+        /// <param name="pendingIP">remote IP address</param>
+        /// <param name="pendingTxs">insert txs</param>
+        /// <param name="outResults">failed insert txs</param>
+        /// <returns>false if error case</returns>
+        private static bool RemoteSet(UInt32 pendingIP, List<TX> pendingTxs, ref List<TX> outResults)
+        {
+            using (var req = new RequestSocket())
+            {
+                string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
+                req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                //generate request str
+                TxReq txReq = new TxReq();
+                txReq.reqType = "set";
+                StringBuilder body = new StringBuilder("[");
+                foreach (TX pendingTx in pendingTxs)
+                {
+                    body.Append(pendingTx.ToString() + ',');
+                }
+                body.Remove(body.Length - 1, 1);
+                body.Append(']');
+                txReq.body = body.ToString();
+                string reqStr = JsonConvert.SerializeObject(txReq);
+                req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
+                string responseStr = Encoding.Default.GetString(req.Receive());
+                TX[] responses = JsonConvert.DeserializeObject<TX[]>(responseStr);
+                outResults = new List<TX>();
+                if (responses.Length > 0)
+                {
+                    foreach (TX response in responses)
+                    {
+                        outResults.Add(response);
+                    }
+                }
+            }
             return true;
         }
 

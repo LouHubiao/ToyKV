@@ -33,7 +33,7 @@ namespace ToyGE
                 if (inputs[0] == "search")
                 {
                     Console.WriteLine("SearchNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
-                    Int64[] keys = new Int64[] { Int64.Parse(inputs[1])};
+                    Int64[] keys = new Int64[] { Int64.Parse(inputs[1]) };
                     List<TX> txs = new List<TX>();
                     TxHelper.Get(keys, ref txs);
                     if (txs.Count != 0)
@@ -160,7 +160,7 @@ namespace ToyGE
                     IntPtr preAddr = new IntPtr(0);
                     int txsIndex = 0;
                     TX[] txs = new TX[50];
-                    List<int> setResults = new List<int>();
+                    List<TX> outResults = new List<TX>();
                     while (null != (line = reader.ReadLine()))
                     {
                         //string to object
@@ -174,13 +174,19 @@ namespace ToyGE
                         else
                         {
                             //insert one node into memory
-                            TxHelper.Set(txs, ref setResults);
+                            TxHelper.Set(txs, ref outResults);
+
+                            //failed part insert
+                            if (outResults.Count > 0)
+                            {
+
+                            }
 
                             //clear txs
                             txsIndex = 0;
                             txs[txsIndex++] = jsonBack;
                         }
-                        
+
 
                         //foreach (string _out in jsonBack.outs)
                         //{
