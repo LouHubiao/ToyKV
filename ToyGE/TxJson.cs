@@ -115,12 +115,14 @@ namespace ToyGE
                 strBuilder.Append(_in.tx_index);
                 strBuilder.Append("},");
             }
+            strBuilder.Remove(strBuilder.Length-1, 1);
             strBuilder.Append("],\"outs\":[");
             foreach (string _out in this.outs)
             {
                 strBuilder.Append("\"" + _out + "\"");
                 strBuilder.Append(",");
             }
+            strBuilder.Remove(strBuilder.Length - 1, 1);
             strBuilder.Append("],\"amount\":");
             strBuilder.Append(this.amount);
             strBuilder.Append("}");
