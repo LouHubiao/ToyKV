@@ -76,7 +76,7 @@ namespace ToyGE
         //tx port for listen
         public static int txPort = 0;
         //machines with tx index
-        public static Machines<Int64> machines;
+        public static MachinesInt64 machines;
         //tx insert gap
         public static Int16 gap;
 
@@ -89,12 +89,12 @@ namespace ToyGE
 
             //get tx Addr
             IntPtr cellAddr;
-            MachineIndex<Int64> machineIndex;
+            MachineIndexInt64 machineIndex;
             UInt32 pendingIP = 0;
             List<Int64> pendingKeys = new List<Int64>();
             foreach (Int64 key in keys)
             {
-                if (Machines<Int64>.Get(machines.machineIndexs, key, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
+                if (MachinesInt64.Get(machines.machineIndexs, key, out cellAddr, out machineIndex) == false)
                 {
                     if (machineIndex.machineIP != 0)
                     {
@@ -245,12 +245,12 @@ namespace ToyGE
 
             //get block info
             IntPtr cellAddr;
-            MachineIndex<Int64> machineIndex;
+            MachineIndexInt64 machineIndex;
             UInt32 pendingIP = 0;
             List<TX> pendingTxs = new List<TX>();
             foreach (TX tx in txs)
             {
-                if (Machines<Int64>.Get(machines.machineIndexs, tx.CellID, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
+                if (MachinesInt64.Get(machines.machineIndexs, tx.CellID, out cellAddr, out machineIndex) == false)
                 {
                     if (machineIndex.machineIP != 0)
                     {
@@ -280,7 +280,7 @@ namespace ToyGE
                     else
                     {
                         //insert cell
-                        Tuple<TX, MachineIndex<Int64>> threadPara = new Tuple<TX, MachineIndex<long>>(tx, machineIndex);
+                        Tuple<TX, MachineIndexInt64> threadPara = new Tuple<TX, MachineIndexInt64>(tx, machineIndex);
                         TX setResult = null;
                         ThreadPool.QueueUserWorkItem(new WaitCallback(delegate (object state)
                         {
@@ -313,18 +313,18 @@ namespace ToyGE
             return true;
         }
 
-        private static bool SetTx(Tuple<TX, MachineIndex<Int64>> threadPara)
+        private static bool SetTx(Tuple<TX, MachineIndexInt64> threadPara)
         {
             TX tx = threadPara.Item1;
-            MachineIndex<Int64> machineIndex = threadPara.Item2;
+            MachineIndexInt64 machineIndex = threadPara.Item2;
 
             //judge if has enough space for just cell 37
-            Block<Int64> block = machineIndex.block;
+            BlockInt64 block = machineIndex.block;
             IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
             if (nextFreeInBlock.ToInt64() == 0)
                 return false;   //update false
 
-            B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
+            ARTInt64.Insert(block.blockIndex.tree, tx.CellID, nextFreeInBlock);
 
             //pointer for insert unsure length type, 37 is the length of tx
             IntPtr nextPartAddr = nextFreeInBlock + 37;
@@ -488,8 +488,8 @@ namespace ToyGE
         {
             //get tx Addr
             IntPtr cellAddr;
-            MachineIndex<Int64> machineIndex;
-            if (Machines<Int64>.Get(machines.machineIndexs, key, Compare.CompareInt64, out cellAddr, out machineIndex) == false)
+            MachineIndexInt64 machineIndex;
+            if (MachinesInt64.Get(machines.machineIndexs, key, out cellAddr, out machineIndex) == false)
             {
                 return false;
             }
@@ -542,12 +542,34 @@ namespace ToyGE
         public static int Foreach(Delegate<Int64>.Statistic statistic)
         {
             int result = 0;
-            foreach (MachineIndex<Int64> index in machines.machineIndexs.Values)
+            foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
             {
-                Block<Int64> block = index.block;
-                Node<Int64, IntPtr> node = block.blockIndex.root;
-                result += BTreeForeach(node, statistic);
+                BlockInt64 block = index.block;
+                ARTInt64Node node = block.blockIndex.tree.root;
+                result += ARTTreeForeach(node, statistic);
             }
+            return result;
+        }
+
+        static int ARTTreeForeach(ARTInt64Node node, Delegate<Int64>.Statistic statistic)
+        {
+            if (node == null)
+            {
+                return 0;
+            }
+
+            int result = 0;
+            if (node.value.ToInt32() != 0)
+            {
+                if (statistic(node.value) == true)
+                {
+                    result++;
+                }
+            }
+            if (node.leftChild != null)
+                result += ARTTreeForeach(node.leftChild, statistic);
+            if (node.rightChild != null)
+                result += ARTTreeForeach(node.rightChild, statistic);
             return result;
         }
 

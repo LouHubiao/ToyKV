@@ -90,11 +90,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Block.cs" />
+    <Compile Include="ARTInt64.cs" />
     <Compile Include="BTree.cs" />
     <Compile Include="Delegate.cs" />
     <Compile Include="Index.cs" />
     <Compile Include="Machine.cs" />
+    <Compile Include="MachineInt64.cs" />
     <Compile Include="MemHelper.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

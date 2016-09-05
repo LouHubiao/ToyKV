@@ -136,7 +136,7 @@ namespace ToyGE
             //remote: 10.86.170.172
             UInt32 remoteIP = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
             machineInventory.Add(remoteIP, 1 << 30);
-            TxHelper.machines = new Machines<Int64>(1 << 30, machineInventory);
+            TxHelper.machines = new MachinesInt64(1 << 30, machineInventory);
 
             listenBegin();
         }
