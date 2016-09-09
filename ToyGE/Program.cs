@@ -18,6 +18,9 @@ namespace ToyGE
         //gap for every string or list
         static Int16 gap = 0;
 
+        //group count of txs for pre set
+        static int txsGroupCount = 50;
+
         static void Main(string[] args)
         {
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
@@ -25,6 +28,8 @@ namespace ToyGE
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
             LoadTx(args[0]);
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
+
+            List<Int64> failedKeys = new List<Int64>();
 
             while (true)
             {
@@ -34,8 +39,19 @@ namespace ToyGE
                 {
                     Console.WriteLine("SearchNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
                     Int64[] keys = new Int64[] { Int64.Parse(inputs[1]) };
+
                     List<TX> txs = new List<TX>();
-                    TxHelper.Get(keys, ref txs);
+                    Task.Factory.StartNew(() =>
+                    {
+                        TxHelper.Get(keys, txs, failedKeys);
+                    });
+
+                    int timerCount = 0;
+                    while (txs.Count + failedKeys.Count < keys.Length)
+                    {
+                        Thread.Sleep(timerCount++);
+                    }
+
                     if (txs.Count != 0)
                         Console.WriteLine(txs[0].ToString());
                     else
@@ -129,13 +145,13 @@ namespace ToyGE
             TxHelper.gap = 0;
 
             //<ip, memory space>
-            Dictionary<UInt32, int> machineInventory = new Dictionary<UInt32, int>();
+            Dictionary<UInt32, Int64> machineInventory = new Dictionary<UInt32, Int64>();
             //local: 10.172.154.30
             UInt32 localIP = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
-            machineInventory.Add(localIP, 1 << 30);
+            machineInventory.Add(localIP, (Int64)1 << 33);
             //remote: 10.86.170.172
             UInt32 remoteIP = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
-            machineInventory.Add(remoteIP, 1 << 30);
+            machineInventory.Add(remoteIP, (Int64)1 << 32);
             TxHelper.machines = new MachinesInt64(1 << 30, machineInventory);
 
             listenBegin();
@@ -158,52 +174,48 @@ namespace ToyGE
                 {
                     string line;
                     IntPtr preAddr = new IntPtr(0);
-                    int txsIndex = 0;
-                    TX[] txs = new TX[50];
-                    List<TX> outResults = new List<TX>();
+                    List<TX> txs = new List<TX>();
+                    List<TX> outResults = new List<TX>(); ;
                     while (null != (line = reader.ReadLine()))
                     {
                         //string to object
                         TX jsonBack = TX.ConvertStringToJSONBack(line);
 
-                        if (txsIndex < txs.Length)
+                        if (txs.Count < txsGroupCount)
                         {
                             //append
-                            txs[txsIndex++] = jsonBack;
+                            txs.Add(jsonBack);
                         }
                         else
                         {
                             //insert one node into memory
-                            TxHelper.Set(txs, ref outResults);
-
-                            //failed part insert
-                            if (outResults.Count > 0)
+                            TX[] txsArr = txs.ToArray();
+                            Task.Factory.StartNew(() =>
                             {
-
-                            }
+                                TxHelper.Set(txsArr, outResults);
+                            });
 
                             //clear txs
-                            txsIndex = 0;
-                            txs[txsIndex++] = jsonBack;
+                            txs.Clear();
+                            txs.Add(jsonBack);
                         }
+                    }
+                    if (txs.Count > 0)
+                    {
+                        //insert one node into memory
+                        TX[] txsArr = txs.ToArray();
+                        Task.Factory.StartNew(() =>
+                        {
+                            TxHelper.Set(txsArr, outResults);
+                        });
 
+                        //clear txs
+                        txs.Clear();
+                    }
 
-                        //foreach (string _out in jsonBack.outs)
-                        //{
-                        //    IntPtr nodeAddr = new IntPtr();
-                        //    if (UserMain.hashTree.BTSearch(UserMain.hashTree.root, _out, ref nodeAddr))
-                        //    {
-                        //        //insert list part
-
-                        //    }
-                        //    else
-                        //    {
-                        //        //insert new list
-                        //        List<Int64> txs = new List<Int64>();
-                        //        txs.Add(jsonBack.CellID);
-                        //        UserMain.InsertUser_Cell_Index(_out, txs);
-                        //    }
-                        //}
+                    //failed part insert
+                    if (outResults.Count > 0)
+                    {
 
                     }
                 }
@@ -211,6 +223,7 @@ namespace ToyGE
             Console.WriteLine("LoadTxs end...");
         }
 
+        //listen remote request
         static void listenBegin()
         {
             Thread listener = new Thread(() =>

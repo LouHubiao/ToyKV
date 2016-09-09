@@ -6,6 +6,7 @@ using System.Text;
 using System.Net;
 using Newtonsoft.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 /*	
     In Memory:
@@ -82,136 +83,58 @@ namespace ToyGE
 
         #region search operation
         //convert memory Tx to object for random access
-        public static bool Get(Int64[] keys, ref List<TX> txs)
+        public static void Get(Int64[] keys, List<TX> getTxs, List<Int64> failedKeys)
         {
             //the out txs art not same order with keys 
             Array.Sort(keys);
 
-            //get tx Addr
-            IntPtr cellAddr;
             MachineIndexInt64 machineIndex;
             UInt32 pendingIP = 0;
             List<Int64> pendingKeys = new List<Int64>();
+
             foreach (Int64 key in keys)
             {
-                if (MachinesInt64.Get(machines.machineIndexs, key, out cellAddr, out machineIndex) == false)
+                if (MachinesInt64.GetMachineIndex(machines.machineIndexs, key, out machineIndex) == false)
                 {
-                    if (machineIndex.machineIP != 0)
+                    //remote get
+                    if (machineIndex.machineIP == pendingIP)
                     {
-                        //remote get
-                        if (machineIndex.machineIP == pendingIP)
-                        {
-                            //add into pending req
-                            pendingKeys.Add(key);
-                        }
-                        else
-                        {
-                            if (pendingKeys.Count != 0)
-                            {
-                                //send pending req and get tx array
-                                using (var req = new RequestSocket())
-                                {
-                                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
-                                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                                    //generate request str
-                                    TxReq txReq = new TxReq();
-                                    txReq.reqType = "get";
-                                    StringBuilder body = new StringBuilder("[");
-                                    foreach (Int64 pendingKey in pendingKeys)
-                                    {
-                                        body.Append(pendingKey.ToString() + ',');
-                                    }
-                                    body.Remove(body.Length - 1, 1);
-                                    body.Append(']');
-                                    txReq.body = body.ToString();
-                                    string reqStr = JsonConvert.SerializeObject(txReq);
-                                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
-                                    string responseStr = Encoding.Default.GetString(req.Receive());
-                                    TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
-                                    foreach (TX responseTx in responseTxs)
-                                    {
-                                        txs.Add(responseTx);
-                                    }
-                                }
-                            }
-                            //update pending info
-                            pendingIP = machineIndex.machineIP;
-                            pendingKeys.Clear();
-                            pendingKeys.Add(key);
-                        }
+                        //add into pending req
+                        pendingKeys.Add(key);
                     }
                     else
                     {
-                        //error
-                        return false;
+                        if (pendingKeys.Count != 0)
+                        {
+                            Int64[] pendingKeysArr = pendingKeys.ToArray();
+                            Task.Factory.StartNew(() =>
+                            {
+                                GetRemote(pendingIP, pendingKeysArr, getTxs, failedKeys);
+                            });
+                        }
+                        //update pending info
+                        pendingIP = machineIndex.machineIP;
+                        pendingKeys.Clear();
+                        pendingKeys.Add(key);
                     }
                 }
                 else
                 {
-                    //get cell in local machine
-                    TX tx = new TX();
-
-                    // judge isDelete
-                    byte status = MemByte.Get(ref cellAddr);
-                    byte mask = 0x80;
-                    if ((status & mask) != 0)
+                    Task.Factory.StartNew(() =>
                     {
-                        //deleted cell
-                        continue;
-                    }
-
-                    //read cellID
-                    tx.CellID = MemInt64.Get(ref cellAddr);
-
-                    //read hash
-                    tx.hash = MemString.Get(ref cellAddr);
-
-                    //read time
-                    tx.time = MemInt64.Get(ref cellAddr);
-
-                    //read ins
-                    tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
-
-                    //read outs
-                    tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
-
-                    //time amount
-                    tx.amount = MemInt64.Get(ref cellAddr);
-
-                    txs.Add(tx);
+                        GetOneTx(machineIndex, key, getTxs, failedKeys);
+                    });
                 }
             }
 
             if (pendingKeys.Count != 0)
             {
-                //send pending req and get tx array
-                using (var req = new RequestSocket())
+                Int64[] pendingKeysArr = pendingKeys.ToArray();
+                Task.Factory.StartNew(() =>
                 {
-                    string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
-                    req.Connect("tcp://" + ipAddress + ":" + txPort + "");
-                    //generate request str
-                    TxReq txReq = new TxReq();
-                    txReq.reqType = "get";
-                    StringBuilder body = new StringBuilder("[");
-                    foreach (Int64 pendingKey in pendingKeys)
-                    {
-                        body.Append(pendingKey.ToString() + ',');
-                    }
-                    body.Remove(body.Length - 1, 1);
-                    body.Append(']');
-                    txReq.body = body.ToString();
-                    string reqStr = JsonConvert.SerializeObject(txReq);
-                    req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
-                    string responseStr = Encoding.Default.GetString(req.Receive());
-                    TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
-                    foreach (TX responseTx in responseTxs)
-                    {
-                        txs.Add(responseTx);
-                    }
-                }
+                    GetRemote(pendingIP, pendingKeysArr, getTxs, failedKeys);
+                });
             }
-
-            return true;
         }
 
         //get In struct
@@ -228,6 +151,86 @@ namespace ToyGE
             return new In(addr, tx_index);
         }
 
+        private static void GetOneTx(MachineIndexInt64 machineIndex, Int64 key, List<TX> getTxs, List<Int64> failedKeys)
+        {
+            //get tx Addr
+            IntPtr cellAddr;
+
+            if (MachinesInt64.GetCellAddr(machineIndex, key, out cellAddr))
+            {
+                //get cell in local machine
+                TX tx = new TX();
+
+                // judge isDelete
+                byte status = MemByte.Get(ref cellAddr);
+                byte mask = 0x80;
+                if ((status & mask) != 0)
+                {
+                    //deleted cell
+                    lock (failedKeys)
+                    {
+                        failedKeys.Add(key);
+                    }
+                    return;
+                }
+
+                //read cellID
+                tx.CellID = MemInt64.Get(ref cellAddr);
+
+                //read hash
+                tx.hash = MemString.Get(ref cellAddr);
+
+                //read time
+                tx.time = MemInt64.Get(ref cellAddr);
+
+                //read ins
+                tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
+
+                //read outs
+                tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
+
+                //time amount
+                tx.amount = MemInt64.Get(ref cellAddr);
+
+                lock (getTxs)
+                {
+                    getTxs.Add(tx);
+                }
+            }
+        }
+
+        private static void GetRemote(UInt32 pendingIP, Int64[] pendingKeys, List<TX> getTxs, List<Int64> failedKeys)
+        {
+            //send pending req and get tx array
+            using (var req = new RequestSocket())
+            {
+                string ipAddress = new IPAddress(BitConverter.GetBytes(pendingIP)).ToString();
+                req.Connect("tcp://" + ipAddress + ":" + txPort + "");
+                //generate request str
+                TxReq txReq = new TxReq();
+                txReq.reqType = "get";
+                StringBuilder body = new StringBuilder("[");
+                foreach (Int64 pendingKey in pendingKeys)
+                {
+                    body.Append(pendingKey.ToString() + ',');
+                }
+                body.Remove(body.Length - 1, 1);
+                body.Append(']');
+                txReq.body = body.ToString();
+                string reqStr = JsonConvert.SerializeObject(txReq);
+                req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
+                string responseStr = Encoding.Default.GetString(req.Receive());
+                TX[] responseTxs = JsonConvert.DeserializeObject<TX[]>(responseStr);
+                foreach (TX responseTx in responseTxs)
+                {
+                    lock (getTxs)
+                    {
+                        getTxs.Add(responseTx);
+                    }
+                }
+            }
+        }
+
         #endregion search operation
 
 
@@ -236,93 +239,82 @@ namespace ToyGE
         /// convert object to byte[] in memory
         /// </summary>
         /// <param name="txs"></param>
-        /// <param name="outResults">failed insert txs</param>
+        /// <param name="failedTxs">failed insert txs</param>
         /// <returns></returns>
-        public static bool Set(TX[] txs, ref List<TX> outResults)
+        public static void Set(TX[] txs, List<TX> failedTxs)
         {
-            //sort txs, for insert multiply txs
+            //sort txs, for insert multiply txs in nearby machine
             Array.Sort(txs);
 
-            //get block info
-            IntPtr cellAddr;
             MachineIndexInt64 machineIndex;
             UInt32 pendingIP = 0;
             List<TX> pendingTxs = new List<TX>();
             foreach (TX tx in txs)
             {
-                if (MachinesInt64.Get(machines.machineIndexs, tx.CellID, out cellAddr, out machineIndex) == false)
+                if (MachinesInt64.GetMachineIndex(machines.machineIndexs, tx.CellID, out machineIndex) == false)
                 {
-                    if (machineIndex.machineIP != 0)
+                    //remote get
+                    if (machineIndex.machineIP == pendingIP)
                     {
-                        //remote get
-                        if (machineIndex.machineIP == pendingIP)
-                        {
-                            //add into pending req
-                            pendingTxs.Add(tx);
-                        }
-                        else
-                        {
-                            if (pendingTxs.Count != 0)
-                            {
-                                //send pending req
-                                if (RemoteSet(pendingIP, pendingTxs, ref outResults) == false)
-                                {
-                                    //all failed
-                                    outResults = new List<TX>(txs);
-                                }
-                            }
-                            //update pending info
-                            pendingIP = machineIndex.machineIP;
-                            pendingTxs.Clear();
-                            pendingTxs.Add(tx);
-                        }
+                        //add into pending req
+                        pendingTxs.Add(tx);
                     }
                     else
                     {
-                        //insert cell
-                        Tuple<TX, MachineIndexInt64> threadPara = new Tuple<TX, MachineIndexInt64>(tx, machineIndex);
-                        TX setResult = null;
-                        ThreadPool.QueueUserWorkItem(new WaitCallback(delegate (object state)
+                        if (pendingTxs.Count != 0)
                         {
-                            if (SetTx(threadPara) == false)
+                            //send pending req
+                            Task.Factory.StartNew(() =>
                             {
-                                //isnert failed
-                                setResult = tx;
-                            }
-                        }), null);
-                        if (setResult != null)
-                            outResults.Add(setResult);
+                                SetRemote(pendingIP, pendingTxs, failedTxs);
+                            });
+                        }
+                        //update pending info
+                        pendingIP = machineIndex.machineIP;
+                        pendingTxs.Clear();
+                        pendingTxs.Add(tx);
                     }
                 }
                 else
                 {
-                    //if has cell, update it
+                    //insert cell
+                    Task.Factory.StartNew(() =>
+                    {
+                        SetOneTx(tx, machineIndex, failedTxs);
+                    });
                 }
             }
 
             if (pendingTxs.Count != 0)
             {
                 //send pending req
-                if (RemoteSet(pendingIP, pendingTxs, ref outResults) == false)
+                Task.Factory.StartNew(() =>
                 {
-                    //all failed
-                    outResults = new List<TX>(txs);
-                }
+                    SetRemote(pendingIP, pendingTxs, failedTxs);
+                });
             }
-
-            return true;
         }
 
-        private static bool SetTx(Tuple<TX, MachineIndexInt64> threadPara)
+        private static void SetOneTx(TX tx, MachineIndexInt64 machineIndex, List<TX> failedTxs)
         {
-            TX tx = threadPara.Item1;
-            MachineIndexInt64 machineIndex = threadPara.Item2;
+            //debug
+            if (tx.CellID == 148108)
+            {
+
+            }
 
             //judge if has enough space for just cell 37
             BlockInt64 block = machineIndex.block;
             IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
             if (nextFreeInBlock.ToInt64() == 0)
-                return false;   //update false
+            {
+                //find another free space
+                lock (failedTxs)
+                {
+                    failedTxs.Add(tx);
+                }
+                return;
+            }
 
             ARTInt64.Insert(block.blockIndex.tree, tx.CellID, nextFreeInBlock);
 
@@ -350,7 +342,6 @@ namespace ToyGE
             //insert amount
             MemInt64.Set(ref nextFreeInBlock, tx.amount);
 
-            return true;
         }
 
         /// <summary>
@@ -358,9 +349,9 @@ namespace ToyGE
         /// </summary>
         /// <param name="pendingIP">remote IP address</param>
         /// <param name="pendingTxs">insert txs</param>
-        /// <param name="outResults">failed insert txs</param>
+        /// <param name="failedTxs">failed insert txs</param>
         /// <returns>false if error case</returns>
-        private static bool RemoteSet(UInt32 pendingIP, List<TX> pendingTxs, ref List<TX> outResults)
+        private static void SetRemote(UInt32 pendingIP, List<TX> pendingTxs, List<TX> failedTxs)
         {
             using (var req = new RequestSocket())
             {
@@ -381,16 +372,17 @@ namespace ToyGE
                 req.Send(Encoding.Default.GetBytes(reqStr.ToString()));
                 string responseStr = Encoding.Default.GetString(req.Receive());
                 TX[] responses = JsonConvert.DeserializeObject<TX[]>(responseStr);
-                outResults = new List<TX>();
                 if (responses.Length > 0)
                 {
                     foreach (TX response in responses)
                     {
-                        outResults.Add(response);
+                        lock (failedTxs)
+                        {
+                            failedTxs.Add(response);
+                        }
                     }
                 }
             }
-            return true;
         }
 
         //insert In struct
@@ -439,17 +431,22 @@ namespace ToyGE
                     {
                         //GET response
                         Int64[] keys = JsonConvert.DeserializeObject<Int64[]>(receiveOjb.body);
+                        List<Int64> failedKeys = new List<Int64>();
                         List<TX> txs = new List<TX>();
-                        if (Get(keys, ref txs))
-                        {
-                            foreach (TX tx in txs)
-                            {
-                                responseStr.Append(tx.ToString() + ",");
-                            }
-                        }
-                        else
-                        {
 
+                        //get inlocal
+                        Task.Factory.StartNew(() =>
+                        {
+                            Get(keys, txs, failedKeys);
+                        }).GetAwaiter().GetResult();
+
+                        foreach (TX tx in txs)
+                        {
+                            responseStr.Append(tx.ToString() + ",");
+                        }
+                        if (failedKeys.Count > 0)
+                        {
+                            //get error
                         }
                     }
                     else if (receiveOjb.reqType == "set")
@@ -457,7 +454,14 @@ namespace ToyGE
                         //SET response
                         TX[] txs = JsonConvert.DeserializeObject<TX[]>(receiveOjb.body);
                         List<TX> outResults = new List<TX>();
-                        if (Set(txs, ref outResults))
+
+                        //set in local
+                        Task.Factory.StartNew(() =>
+                        {
+                            Set(txs, outResults);
+                        }).GetAwaiter().GetResult();
+                        
+                        if (outResults.Count > 0)
                         {
                             foreach (TX setResult in outResults)
                             {
@@ -489,7 +493,11 @@ namespace ToyGE
             //get tx Addr
             IntPtr cellAddr;
             MachineIndexInt64 machineIndex;
-            if (MachinesInt64.Get(machines.machineIndexs, key, out cellAddr, out machineIndex) == false)
+            if (MachinesInt64.GetMachineIndex(machines.machineIndexs, key, out machineIndex) == false)
+            {
+                return false;
+            }
+            if (MachinesInt64.GetCellAddr(machineIndex, key, out cellAddr) == false)
             {
                 return false;
             }

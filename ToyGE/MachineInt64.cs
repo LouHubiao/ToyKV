@@ -49,7 +49,7 @@ namespace ToyGE
         public string ConfigurationManager { get; private set; }
 
         //init machines, machineInventory is ip and memory space
-        public MachinesInt64(int blockSize, Dictionary<UInt32, int> machineInventory)
+        public MachinesInt64(int blockSize, Dictionary<UInt32, Int64> machineInventory)
         {
             this.BlockSize = blockSize;
             Int16 indexBegin = 0;
@@ -73,8 +73,6 @@ namespace ToyGE
                 int blockCount = (Int32)(item.Value / BlockSize);
                 if (item.Key == localIP)
                     AddMachine(0, blockCount, BlockSize, indexBegin, indexEnd);
-                else
-                    AddMachine(item.Key, blockCount, BlockSize, indexBegin, indexEnd);
                 indexBegin = indexEnd;
                 indexEnd = (Int16)(indexBegin + offset);
             }
@@ -98,7 +96,7 @@ namespace ToyGE
         }
 
         //get addr and block info by key
-        public static bool Get(Dictionary<Int16, MachineIndexInt64> machineIndexs, Int64 key, out IntPtr cellAddr, out MachineIndexInt64 machineIndex)
+        public static bool GetMachineIndex(Dictionary<Int16, MachineIndexInt64> machineIndexs, Int64 key, out MachineIndexInt64 machineIndex)
         {
             //search in machineIndex and get machineID and blockInfo
             Int16 hash = (Int16)key.GetHashCode();
@@ -116,13 +114,23 @@ namespace ToyGE
 
             //in remote machine
             if (index.machineIP != 0)
-            {
-                cellAddr = IntPtr.Zero;
                 return false;
-            }
 
+            //in local machine
+            return true;
+        }
+
+        /// <summary>
+        /// find cellAddr in machine index
+        /// </summary>
+        /// <param name="machineIndex"></param>
+        /// <param name="key"></param>
+        /// <param name="cellAddr"></param>
+        /// <returns>has found</returns>
+        public static bool GetCellAddr(MachineIndexInt64 machineIndex, Int64 key, out IntPtr cellAddr)
+        {
             //search in index and get addr
-            return ARTInt64.Search(index.block.blockIndex.tree, key, out cellAddr);
+            return ARTInt64.Search(machineIndex.block.blockIndex.tree, key, out cellAddr);
         }
     }
 }

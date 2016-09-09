@@ -152,8 +152,12 @@ namespace ToyGE
             //insert new node into parent if place is null
             if (node == null)
             {
-                InsertNewNode(parent, isLeft, key, value);
-                return true;
+                if (InsertNewNode(parent, isLeft, key, value) == true)
+                    return true;
+                else if (isLeft)
+                    node = parent.leftChild;
+                else
+                    node = parent.rightChild;
             }
 
             //compare with prefix
@@ -170,19 +174,22 @@ namespace ToyGE
                 }
                 else
                 {
-                    //not equals, then split node and insert new node
-                    if (matchCount == 0)
-                        node.prefix = 0;
-                    else
-                        node.prefix = node.prefix % ((int)Math.Pow(2, matchCount));
+                    lock (node)
+                    {
+                        //not equals, then split node and insert new node
+                        if (matchCount == 0)
+                            node.prefix = 0;
+                        else
+                            node.prefix = node.prefix % ((int)Math.Pow(2, matchCount));
 
-                    //inherit parent node's part prefix
-                    SplitNode(node, prefix % 2 == 0, prefix >> 1, node.value, node.prefixLength - matchCount - 1);
-                    node.prefixLength = matchCount;
+                        //inherit parent node's part prefix
+                        SplitNode(node, prefix % 2 == 0, prefix >> 1, node.value, node.prefixLength - matchCount - 1);
+                        node.prefixLength = matchCount;
 
-                    InsertNewNode(node, keyCopy % 2 == 0, keyCopy >> 1, value);
-                    node.value = IntPtr.Zero;
-                    return true;
+                        InsertNewNode(node, keyCopy % 2 == 0, keyCopy >> 1, value);
+                        node.value = IntPtr.Zero;
+                        return true;
+                    }
                 }
             }
             if (keyCopy > 0)
@@ -197,17 +204,19 @@ namespace ToyGE
                     }
                     else
                     {
-                        if (matchCount == 0)
-                            node.prefix = 0;
-                        else
-                            node.prefix = node.prefix % ((int)Math.Pow(2, matchCount));
+                        lock (node) {
+                            if (matchCount == 0)
+                                node.prefix = 0;
+                            else
+                                node.prefix = node.prefix % ((int)Math.Pow(2, matchCount));
 
-                        //remove prefixLength
-                        SplitNode(node, true, 0, node.value, node.prefixLength - matchCount - 1);
-                        node.prefixLength = matchCount;
+                            //remove prefixLength
+                            SplitNode(node, true, 0, node.value, node.prefixLength - matchCount - 1);
+                            node.prefixLength = matchCount;
 
-                        InsertNewNode(node, false, keyCopy >> 1, value);
-                        return true;
+                            InsertNewNode(node, false, keyCopy >> 1, value);
+                            return true;
+                        }
                     }
                 }
                 InsertNode(node, keyCopy % 2 == 0, keyCopy >> 1, value);
@@ -233,8 +242,14 @@ namespace ToyGE
             return true;
         }
 
-        private static void InsertNewNode(ARTInt64Node parent, bool isLeft, Int64 key, IntPtr value)
+        private static bool InsertNewNode(ARTInt64Node parent, bool isLeft, Int64 key, IntPtr value)
         {
+            bool result = true;
+            if (isLeft && parent.leftChild != null)
+                result = false;
+            else if (!isLeft && parent.rightChild != null)
+                result = false;
+
             ARTInt64Node node = new ARTInt64Node();
             node.prefix = key;
             node.prefixLength = Convert.ToString(key, 2).Length;
@@ -249,6 +264,8 @@ namespace ToyGE
             {
                 parent.rightChild = node;
             }
+
+            return result;
         }
 
         private static void SplitNode(ARTInt64Node parent, bool isLeft, Int64 key, IntPtr value, int prefixLen)
