@@ -49,30 +49,22 @@ namespace ToyGE
         public string ConfigurationManager { get; private set; }
 
         //init machines, machineInventory is ip and memory space
-        public MachinesInt64(int blockSize, Dictionary<UInt32, Int64> machineInventory)
+        public MachinesInt64(int blockSize, Dictionary<UInt32, Int64> machineInventory, List<UInt32> localIPs)
         {
             this.BlockSize = blockSize;
             Int16 indexBegin = 0;
             int offset = (Int16.MaxValue - indexBegin) / machineInventory.Count();
             Int16 indexEnd = (Int16)(indexBegin + offset);
-            //local ip to 0
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            UInt32 localIP = 0;
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    localIP = BitConverter.ToUInt32(ip.GetAddressBytes(), 0);
-                    break;
-                }
-            }
-            Console.WriteLine(localIP);
+            
+            //local ip is 0
             foreach (var item in machineInventory)
             {
                 //init one block
                 int blockCount = (Int32)(item.Value / BlockSize);
-                if (item.Key == localIP)
+                if (localIPs.Contains(item.Key))
                     AddMachine(0, blockCount, BlockSize, indexBegin, indexEnd);
+                else
+                    AddMachine(item.Key, blockCount, BlockSize, indexBegin, indexEnd);
                 indexBegin = indexEnd;
                 indexEnd = (Int16)(indexBegin + offset);
             }
@@ -88,8 +80,8 @@ namespace ToyGE
                 //add block into machineIndex
                 MachineIndexInt64 index = new MachineIndexInt64();
                 index.machineIP = machineIP;
-
-                index.block = new BlockInt64(blockSize);        //alloc block
+                if (machineIP == 0)
+                    index.block = new BlockInt64(blockSize);        //alloc block
                 machineIndexs.Add(beginKey, index);
                 beginKey = (Int16)(beginKey + offset);
             }

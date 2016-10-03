@@ -107,6 +107,11 @@ namespace ToyGE
             *(byte*)(memAddr.ToPointer()) = value;
             memAddr += sizeof(byte);
         }
+
+        public static unsafe void Jump(ref IntPtr memAddr)
+        {
+            memAddr += sizeof(byte);
+        }
     }
 
     //int16 operation
@@ -122,6 +127,11 @@ namespace ToyGE
         public static unsafe void Set(ref IntPtr memAddr, Int16 value)
         {
             *(Int16*)(memAddr.ToPointer()) = value;
+            memAddr += sizeof(Int16);
+        }
+
+        public static unsafe void Jump(ref IntPtr memAddr)
+        {
             memAddr += sizeof(Int16);
         }
     }
@@ -141,6 +151,11 @@ namespace ToyGE
             *(Int32*)(memAddr.ToPointer()) = value;
             memAddr += sizeof(Int32);
         }
+
+        public static unsafe void Jump(ref IntPtr memAddr)
+        {
+            memAddr += sizeof(Int32);
+        }
     }
 
     //int64 operation
@@ -156,6 +171,11 @@ namespace ToyGE
         public static unsafe void Set(ref IntPtr memAddr, Int64 value)
         {
             *(Int64*)(memAddr.ToPointer()) = value;
+            memAddr += sizeof(Int64);
+        }
+
+        public static unsafe void Jump(ref IntPtr memAddr)
+        {
             memAddr += sizeof(Int64);
         }
     }

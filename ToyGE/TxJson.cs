@@ -34,15 +34,6 @@ using System.Collections;
 
 namespace ToyGE
 {
-    public class TxReq
-    {
-        [JsonProperty("reqType")]
-        public string reqType;
-
-        [JsonProperty("body")]
-        public string body;
-    }
-
     public class TX : IComparable<TX>
     {
         [JsonProperty("CellID")]

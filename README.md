@@ -42,7 +42,7 @@ IsLocked表示此数据是否正在被修改（包括增加、删除、修改）
 
 ## 索引结构：
 
-使用B树进行索引。支持多种key类型，object需要设置campare方法。
+（使用B树进行索引。支持多种key类型，object需要设置campare方法。）
 对于string类型，使用了Trie Tree，节约内存容量
 
 ## 内存管理：
