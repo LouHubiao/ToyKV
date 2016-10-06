@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 
+using Newtonsoft.Json;
 using NNanomsg;
 using NNanomsg.Protocols;
 
@@ -18,9 +19,6 @@ namespace ToyGE
         //machines info
         static Machines<Int64> machines;
 
-        //gap for every string or list
-        static Int16 gap = 0;
-
         //group count of txs for pre set
         static int txsGroupCount = 50;
 
@@ -30,20 +28,18 @@ namespace ToyGE
         static void Main(string[] args)
         {
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
-            initTx();
+            init();
             Console.WriteLine("initTx()");
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
 
             string arg = args.Length != 0 ? args[0] : "error dic";
-            LoadTx(arg);
-            Console.WriteLine("LoadTx(args[0])");
+            load(arg);
+            Console.WriteLine("LoadTx()");
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
 
-            GetTest();
-            Console.WriteLine("GetTest(args[0])");
+            test();
+            Console.WriteLine("GetTest()");
             Console.WriteLine(DateTime.Now.ToString("hh:mm:ss fff"));
-
-            List<Int64> failedKeys = new List<Int64>();
 
             while (true)
             {
@@ -54,22 +50,12 @@ namespace ToyGE
                     Console.WriteLine("SearchNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
                     Int64[] keys = new Int64[] { Int64.Parse(inputs[1]) };
 
-                    List<TX> txs = new List<TX>();
-                    Task.Factory.StartNew(() =>
-                    {
-                        TxHelper.Get(keys, txs, failedKeys);
-                    });
+                    List<TX> results = new List<TX>();
+                    List<Int64> failedKeys = new List<Int64>();
+                    TxHelper.Get(keys, new TxHelper.Filter[] { (TxHelper.Filter)Enum.Parse(typeof(TxHelper.Filter), "Hash", true) }, results, failedKeys);
 
-                    int timerCount = 0;
-                    while (txs.Count + failedKeys.Count < keys.Length)
-                    {
-                        if (timerCount > 100)
-                            break;
-                        Thread.Sleep(timerCount++);
-                    }
-
-                    if (txs.Count != 0)
-                        Console.WriteLine(txs[0].ToString());
+                    if (results.Count != 0)
+                        Console.WriteLine(JsonConvert.SerializeObject(results[0]));
                     else
                         Console.WriteLine("null!");
                     Console.WriteLine("SearchNode end..." + DateTime.Now.ToString("hh:mm:ss fff"));
@@ -155,22 +141,22 @@ namespace ToyGE
             //}
         }
 
-        static void initTx()
+        static void init()
         {
-            int txPort = 7788;
-            TxHelper.gap = 0;
-
             //<ip, memory space>
             Dictionary<UInt32, Int64> machineInventory = new Dictionary<UInt32, Int64>();
             //local: 10.172.154.30
-            UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
+            UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("192.168.0.136").GetAddressBytes(), 0);
             machineInventory.Add(IP1, (Int64)1 << 32);
-            //remote: 10.86.170.172
-            UInt32 IP2 = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
-            machineInventory.Add(IP2, (Int64)1 << 32);
-            //graph21: 10.190.172.115
-            UInt32 IP3 = BitConverter.ToUInt32(IPAddress.Parse("10.190.172.115").GetAddressBytes(), 0);
-            machineInventory.Add(IP3, (Int64)1 << 32);
+            ////local: 10.172.154.30
+            //UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
+            //machineInventory.Add(IP1, (Int64)1 << 32);
+            ////remote: 10.86.170.172
+            //UInt32 IP2 = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
+            //machineInventory.Add(IP2, (Int64)1 << 32);
+            ////graph21: 10.190.172.115
+            //UInt32 IP3 = BitConverter.ToUInt32(IPAddress.Parse("10.190.172.115").GetAddressBytes(), 0);
+            //machineInventory.Add(IP3, (Int64)1 << 32);
 
             //exclude localIP
             List<UInt32> localIPs = new List<UInt32>();
@@ -182,62 +168,39 @@ namespace ToyGE
                     UInt32 localIP = BitConverter.ToUInt32(ip.GetAddressBytes(), 0);
                     if (!localIPs.Contains(localIP))
                         localIPs.Add(localIP);
-                    if (localIP == 583532201)
-                        localIPs.Add(IP3);
+                    //IP3 special
+                    //if (localIP == 583532201)
+                    //    localIPs.Add(IP3);
                 }
             }
-            foreach(UInt32 ip in localIPs)
-            {
-                string IPStr = new IPAddress(BitConverter.GetBytes(ip)).ToString();
-                Console.WriteLine("localIP:" + IPStr);
-            }
+            //console local ip address
+            //foreach (UInt32 ip in localIPs)
+            //{
+            //    string IPStr = new IPAddress(BitConverter.GetBytes(ip)).ToString();
+            //    Console.WriteLine("localIP:" + IPStr);
+            //}
 
-            //init the machines
-            TxHelper.machines = new MachinesInt64(1 << 30, machineInventory, localIPs);
+            Int16 gap = 0;
+            int port = 7788;
 
-            //init the sockets
-            TxHelper.repSocket.Bind("tcp://*:" + txPort);
-
-            foreach (var item in machineInventory)
-            {
-                if (!localIPs.Contains(item.Key))
-                {
-                    RequestSocket reqSocket = new RequestSocket();
-                    string IP = new IPAddress(BitConverter.GetBytes(item.Key)).ToString();
-                    reqSocket.Connect("tcp://" + IP + ":" + txPort);
-                    TxHelper.reqSockets.Add(item.Key, reqSocket);
-                }
-            }
-
-            listenBegin();
-        }
-
-        //listen remote
-        static void listenBegin()
-        {
-            Thread listener = new Thread(() =>
-            {
-                //begin listening
-                TxHelper.Response();
-            });
-            listener.Start();
+            TxHelper.init(machineInventory, localIPs, gap, port);
         }
 
         //load tx files
-        static unsafe void LoadTx(string dic)
+        static unsafe void load(string dic)
         {
             //load staitc floder
-            //test: D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test
-            //full: D:\\Bit\\TSLBit\\Generator\\bin\x64\\Debug\\fullBlocks
-            //remote: D:\\v-hulou\\fullBlocks
             DirectoryInfo dirInfo = new DirectoryInfo(dic);
             int count = 0;
+            List<TX> values = new List<TX>();
+            List<TX> failedValues = new List<TX>();
 
-            ThreadPool.SetMaxThreads(8, 8);
-            int workerThreads;
-            int completionPortThreads;
-            ThreadPool.GetMaxThreads(out workerThreads, out completionPortThreads);
-            Console.WriteLine("workerThreads:{0}, completionPortThreads:{1}", workerThreads, completionPortThreads);
+            //config max threads count
+            //ThreadPool.SetMaxThreads(8, 8);
+            //int workerThreads;
+            //int completionPortThreads;
+            //ThreadPool.GetMaxThreads(out workerThreads, out completionPortThreads);
+            //Console.WriteLine("workerThreads:{0}, completionPortThreads:{1}", workerThreads, completionPortThreads);
 
             if (dirInfo.Exists)
             {
@@ -247,65 +210,53 @@ namespace ToyGE
                     using (StreamReader reader = new StreamReader(file.FullName))
                     {
                         string line;
-                        IntPtr preAddr = new IntPtr(0);
-                        List<TX> txs = new List<TX>();
-                        List<TX> outResults = new List<TX>(); ;
                         while (null != (line = reader.ReadLine()))
                         {
-                            count++;
-
                             //string to object
-                            TX jsonBack = TX.ConvertStringToJSONBack(line);
+                            TX jsonBack = JsonConvert.DeserializeObject<TX>(line);
 
-                            if (count % 10000 == 0)
-                            {
-                                testKeys.Add(jsonBack.CellID);
-                            }
-
-                            if (txs.Count < txsGroupCount)
-                            {
-                                //append
-                                txs.Add(jsonBack);
-                            }
-                            else
+                            //set
+                            values.Add(jsonBack);
+                            if (values.Count == txsGroupCount)
                             {
                                 //insert one node into memory
-                                TX[] txsArr = txs.ToArray();
                                 //ThreadPool.QueueUserWorkItem(
                                 //    o => TxHelper.Set(txsArr, outResults)
                                 //    );
-                                TxHelper.Set(txsArr, outResults);
+                                TxHelper.Set(values.ToArray(), null, failedValues);
                                 //clear txs
-                                txs.Clear();
-                                txs.Add(jsonBack);
+                                values.Clear();
+                            }
+
+                            count++;
+                            //get test ids
+                            if (count % 10000 == 0)
+                            {
+                                testKeys.Add(jsonBack.NodeID);
                             }
                         }
-                        if (txs.Count > 0)
+                        //remain values
+                        if (values.Count > 0)
                         {
-                            //insert one node into memory
-                            TX[] txsArr = txs.ToArray();
-                            //ThreadPool.QueueUserWorkItem(
-                            //        o => TxHelper.Set(txsArr, outResults)
-                            //        );
-                            TxHelper.Set(txsArr, outResults);
-                            //clear txs
-                            txs.Clear();
-                        }
-
-                        //failed part insert
-                        if (outResults.Count > 0)
-                        {
-
+                            TxHelper.Set(values.ToArray(), null, failedValues);
+                            values.Clear();
                         }
                     }
                 }
 
             }
+
+            //failed part insert
+            if (failedValues.Count > 0)
+            {
+                //hlou: set again in another thread
+            }
+
             Console.WriteLine("load count:{0}", count);
         }
 
         //test get cost
-        static void GetTest()
+        static void test()
         {
             Console.WriteLine("test count:{0}", testKeys.Count);
 
@@ -313,8 +264,7 @@ namespace ToyGE
             List<TX> outTxs = new List<TX>();
             List<Int64> failedKeys = new List<Int64>();
 
-            TxHelper.Get(keysArr, outTxs, failedKeys);
+            TxHelper.Get(keysArr, null, outTxs, failedKeys);
         }
-
     }
 }

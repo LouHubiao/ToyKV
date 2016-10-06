@@ -488,6 +488,11 @@ namespace ToyGE
             return true;
         }
 
+        public static unsafe void Jump(ref IntPtr memAddr)
+        {
+            memAddr += sizeof(Int32);
+        }
+
         //get string content
         static unsafe string GetChars(ref IntPtr memAddr, int length)
         {
@@ -865,6 +870,11 @@ namespace ToyGE
         }
 
         //remove an item by index from list
+
+        public static unsafe void Jump(ref IntPtr memAddr)
+        {
+            memAddr += sizeof(Int32);
+        }
     }
 
     //free memory operation

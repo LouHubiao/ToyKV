@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
-using System.Net;
-using Newtonsoft.Json;
-using System.Threading;
 using System.Threading.Tasks;
 
+
+using Newtonsoft.Json;
 using NNanomsg;
 using NNanomsg.Protocols;
+using System.Collections;
+using System.Net;
+using System.Threading;
 
 /*	
     In Memory:
@@ -72,6 +75,32 @@ using NNanomsg.Protocols;
 
 namespace ToyGE
 {
+    public class TX : IComparable<TX>
+    {
+        [JsonProperty("CellID")]
+        public Int64 NodeID;
+
+        [JsonProperty("hash")]
+        public String Hash;
+
+        [JsonProperty("time")]
+        public Int64 Time;
+
+        [JsonProperty("ins")]
+        public List<In> In;
+
+        [JsonProperty("outs")]
+        public List<string> Out;
+
+        [JsonProperty("amount")]
+        public Int64 Amount;
+
+        public int CompareTo(TX other)
+        {
+            return NodeID.CompareTo(other.NodeID);
+        }
+    }
+
     public class TxHelper
     {
         //machines with tx index，must first init
@@ -85,13 +114,35 @@ namespace ToyGE
 
         public enum Filter
         {
-            CellID = 1,
-            Hash = 2,
-            Time = 3,
-            In = 4,
-            Out = 5,
-            Amount = 6
+            Hash = 1,
+            Time = 2,
+            In = 3,
+            Out = 4,
+            Amount = 5
         }
+
+        #region init
+
+        public static void init(Dictionary<UInt32, Int64> machineInventory, List<UInt32> localIPs, Int16 pGap, int port)
+        {
+            machines = new MachinesInt64(1 << 30, machineInventory, localIPs);
+            //gap for string or list
+            gap = pGap;
+            repSocket.Bind("tcp://*:" + port);
+            foreach (var item in machineInventory)
+            {
+                if (!localIPs.Contains(item.Key))
+                {
+                    RequestSocket reqSocket = new RequestSocket();
+                    string IP = new IPAddress(BitConverter.GetBytes(item.Key)).ToString();
+                    reqSocket.Connect("tcp://" + IP + ":" + port);
+                    reqSockets.Add(item.Key, reqSocket);
+                }
+            }
+
+            listenBegin();
+        }
+        #endregion
 
         #region search operation
         /// <summary>
@@ -100,7 +151,7 @@ namespace ToyGE
         /// <param name="keys">search keys</param>
         /// <param name="results">result objects</param>
         /// <param name="errorKeys">failed keys</param>
-        public static void Get(Int64[] keys, List<Filter> filters, List<TX> results, List<Int64> errorKeys)
+        public static void Get(Int64[] keys, Filter[] filters, List<TX> results, List<Int64> errorKeys)
         {
             //pay attention: the out txs art not same order with keys 
 
@@ -115,20 +166,20 @@ namespace ToyGE
 
             foreach (Int64 key in keys)
             {
-                //get machineIndex
+                //get index
                 if (MachinesInt64.GetMachineIndex(machines.machineIndexs, key, out machineIndex) == false)
                 {
                     //remote get
                     if (machineIndex.machineIP == pendingIP)
                     {
-                        //add into pendingKeys if has same ip
+                        //add into pendingKeys if has same remote ip
                         pendingKeys.Add(key);
                     }
                     else
                     {
                         if (pendingKeys.Count != 0)
                         {
-                            //remote get, hlou: multiple threads
+                            //remote get, hlou: multiple threads for different machines
                             GetRemote(pendingIP, pendingKeys, filters, results, errorKeys);
                         }
                         //update pending info
@@ -139,7 +190,7 @@ namespace ToyGE
                 }
                 else
                 {
-                    //local get
+                    //local get, hlou: multiple threads for speed up
                     GetOneCell(machineIndex, key, filters, results, errorKeys);
                 }
             }
@@ -155,9 +206,9 @@ namespace ToyGE
         /// </summary>
         /// <param name="machineIndex">machine index tree</param>
         /// <param name="key">input key</param>
-        /// <param name="results">which has part results</param>
+        /// <param name="results">return results(has value, must locked before update)</param>
         /// <param name="errorKeys">failed keys</param>
-        private static void GetOneCell(MachineIndexInt64 machineIndex, Int64 key, List<Filter> filters, List<TX> results, List<Int64> errorKeys)
+        private static void GetOneCell(MachineIndexInt64 machineIndex, Int64 key, Filter[] filters, List<TX> results, List<Int64> errorKeys)
         {
             //pay attention: results and errorKeys has data before, for multiple threads speed up
 
@@ -165,7 +216,15 @@ namespace ToyGE
             IntPtr cellAddr;
 
             //get tx begin address
-            MachinesInt64.GetCellAddr(machineIndex, key, out cellAddr);
+            if (MachinesInt64.GetCellAddr(machineIndex, key, out cellAddr) == false)
+            {
+                //not found, add into errorKeys
+                lock (errorKeys)
+                {
+                    errorKeys.Add(key);
+                }
+                return;
+            }
 
             // judge isDelete
             byte status = MemByte.Get(ref cellAddr);
@@ -183,28 +242,37 @@ namespace ToyGE
             TX tx = new TX();
 
             //read CellID
-            if (filters == null || filters.Contains(Filter.CellID))
-                tx.CellID = MemInt64.Get(ref cellAddr);
+            tx.NodeID = MemInt64.Get(ref cellAddr);
 
             //read Hash
-            if (filters == null || filters.Contains(Filter.Hash))
-                tx.hash = MemString.Get(ref cellAddr);
+            if (filters == null || ((IList)filters).Contains(Filter.Hash))
+                tx.Hash = MemString.Get(ref cellAddr);
+            else
+                MemString.Jump(ref cellAddr);
 
             //read Time
-            if (filters == null || filters.Contains(Filter.Time))
-                tx.time = MemInt64.Get(ref cellAddr);
+            if (filters == null || ((IList)filters).Contains(Filter.Time))
+                tx.Time = MemInt64.Get(ref cellAddr);
+            else
+                MemInt64.Jump(ref cellAddr);
 
             //read ins
-            if (filters == null || filters.Contains(Filter.In))
-                tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
+            if (filters == null || ((IList)filters).Contains(Filter.In))
+                tx.In = MemList.Get<In>(ref cellAddr, InHelper.Get);
+            else
+                MemList.Jump(ref cellAddr);
 
             //read Out
-            if (filters == null || filters.Contains(Filter.Out))
-                tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
+            if (filters == null || ((IList)filters).Contains(Filter.Out))
+                tx.Out = MemList.Get<string>(ref cellAddr, MemString.Get);
+            else
+                MemString.Jump(ref cellAddr);
 
             //read Amount
-            if (filters == null || filters.Contains(Filter.Amount))
-                tx.amount = MemInt64.Get(ref cellAddr);
+            if (filters == null || ((IList)filters).Contains(Filter.Amount))
+                tx.Amount = MemInt64.Get(ref cellAddr);
+            else
+                MemInt64.Jump(ref cellAddr);
 
             //lock results for multiple threads
             lock (results)
@@ -216,41 +284,31 @@ namespace ToyGE
         /// <summary>
         /// get results from remote machines
         /// </summary>
-        /// <param name="remoteIP"></param>
-        /// <param name="keys"></param>
-        /// <param name="filters"></param>
-        /// <param name="results"></param>
-        /// <param name="failedKeys"></param>
-        private static void GetRemote(UInt32 remoteIP, List<Int64> keys, List<Filter> filters, List<TX> results, List<Int64> failedKeys)
+        /// <param name="remoteIP">remote machine ip to get</param>
+        /// <param name="keys">keys to get</param>
+        /// <param name="filters">header filter</param>
+        /// <param name="results">return results(has value, must locked before update)</param>
+        /// <param name="errorKeys">failed keys</param>
+        private static void GetRemote(UInt32 remoteIP, List<Int64> keys, Filter[] filters, List<TX> results, List<Int64> errorKeys)
         {
-            //request socket which built in init function
+            //request socket inited before
             RequestSocket req = reqSockets[remoteIP];
 
             //generate request object, format:{reqType: get, body:[key1, key2, ...]}
             Request request = new Request();
-            request.reqType = "get";
-            StringBuilder body = new StringBuilder("[");
-            foreach (Int64 pendingKey in keys)
-            {
-                body.Append(pendingKey.ToString() + ',');
-            }
-            body.Remove(body.Length - 1, 1);
-            body.Append(']');
-            request.body = body.ToString();
-            //serialize request object to string
-            string reqStr = JsonConvert.SerializeObject(request);
+            request.type = "get";
+            request.filter = JsonConvert.SerializeObject(filters);
+            request.body = JsonConvert.SerializeObject(keys);
 
-            //send request
-            req.Send(Encoding.UTF8.GetBytes(reqStr));
+            //send
+            req.Send(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(request)));
 
-            //receieve response
-            string responseStr = Encoding.UTF8.GetString(req.Receive());
-
-            Response rep = JsonConvert.DeserializeObject<Response>(responseStr);
+            //receieve
+            Response rep = JsonConvert.DeserializeObject<Response>(Encoding.UTF8.GetString(req.Receive()));
 
             //deserialize response
             TX[] appendResults = JsonConvert.DeserializeObject<TX[]>(rep.results);
-            Int64[] appendFailedKeys = JsonConvert.DeserializeObject<Int64[]>(rep.failedKeys);
+            Int64[] appendFailedKeys = JsonConvert.DeserializeObject<Int64[]>(rep.errorResults);
 
             //add results
             foreach (TX append in appendResults)
@@ -265,31 +323,11 @@ namespace ToyGE
             //add failedkeys
             foreach (Int64 append in appendFailedKeys)
             {
-                lock (failedKeys)
+                lock (errorKeys)
                 {
-                    failedKeys.Add(append);
+                    errorKeys.Add(append);
                 }
             }
-        }
-
-
-
-        /// <summary>
-        /// get struct part [In] of object
-        /// </summary>
-        /// <param name="inAddr">part begin address</param>
-        /// <returns>struct part object</returns>
-        public static In GetIn(ref IntPtr inAddr)
-        {
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref inAddr);
-
-            byte status = MemByte.Get(ref offsetMemAddr);
-
-            string addr = MemString.Get(ref offsetMemAddr);
-
-            Int64 tx_index = MemInt64.Get(ref offsetMemAddr);
-
-            return new In(addr, tx_index);
         }
         #endregion search operation
 
@@ -298,237 +336,238 @@ namespace ToyGE
         /// <summary>
         /// convert object to byte[] in memory
         /// </summary>
-        /// <param name="txs"></param>
-        /// <param name="failedTxs">failed insert txs</param>
-        /// <returns></returns>
-        public static void Set(TX[] txs, List<TX> failedTxs)
+        /// <param name="values">values to set</param>
+        /// <param name="failedValues">failed insert values</param>
+        public static void Set(TX[] values, Filter[] filters, List<TX> failedValues)
         {
-            //sort txs, for insert multiply txs in nearby machine
-            Array.Sort(txs);
+            //sort keys for remote group set
+            Array.Sort(values);
 
             MachineIndexInt64 machineIndex;
             UInt32 pendingIP = 0;
             List<TX> pendingTxs = new List<TX>();
-            foreach (TX tx in txs)
+            foreach (TX value in values)
             {
-                if (MachinesInt64.GetMachineIndex(machines.machineIndexs, tx.CellID, out machineIndex) == false)
+                //get index
+                if (MachinesInt64.GetMachineIndex(machines.machineIndexs, value.NodeID, out machineIndex) == false)
                 {
-                    //remote get
+                    //remote set
                     if (machineIndex.machineIP == pendingIP)
                     {
-                        //add into pending req
-                        pendingTxs.Add(tx);
+                        //add into pendingKeys if has same remote ip
+                        pendingTxs.Add(value);
                     }
                     else
                     {
                         if (pendingTxs.Count != 0)
                         {
-                            //send pending req
-                            SetRemote(pendingIP, pendingTxs, failedTxs);
+                            //remote set, hlou: multiple threads for different machines
+                            SetRemote(pendingIP, pendingTxs, filters, failedValues);
                         }
                         //update pending info
                         pendingIP = machineIndex.machineIP;
                         pendingTxs.Clear();
-                        pendingTxs.Add(tx);
+                        pendingTxs.Add(value);
                     }
                 }
                 else
                 {
-                    //insert cell
-                    SetOneTx(tx, machineIndex, failedTxs);
+                    //local set, hlou: multiple threads for speed up
+                    SetOneCell(machineIndex, value, filters, failedValues);
                 }
             }
-
+            //remain keys
             if (pendingTxs.Count != 0)
             {
                 //send pending req
-                SetRemote(pendingIP, pendingTxs, failedTxs);
+                SetRemote(pendingIP, pendingTxs, filters, failedValues);
             }
         }
 
-        private static void SetOneTx(TX tx, MachineIndexInt64 machineIndex, List<TX> failedTxs)
+        /// <summary>
+        /// set one objct of cell
+        /// </summary>
+        /// <param name="machineIndex">machine index tree</param>
+        /// <param name="value">value to set</param>
+        /// <param name="failedValues"></param>
+        private static void SetOneCell(MachineIndexInt64 machineIndex, TX value, Filter[] filters, List<TX> failedValues)
         {
-            //debug
-            if (tx.CellID == 148108)
-            {
-
-            }
-
-            //judge if has enough space for just cell 37
+            //judge if has enough space for cell (space=37, get before compile)
             BlockInt64 block = machineIndex.block;
             IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
             if (nextFreeInBlock.ToInt64() == 0)
             {
-                //find another free space
-                lock (failedTxs)
+                lock (failedValues)
                 {
-                    failedTxs.Add(tx);
+                    failedValues.Add(value);
                 }
                 return;
             }
 
-            ARTInt64.Insert(block.blockIndex.tree, tx.CellID, nextFreeInBlock);
-
-            //pointer for insert unsure length type, 37 is the length of tx
-            IntPtr nextPartAddr = nextFreeInBlock + 37;
+            //insert into index
+            ARTInt64.Insert(block.blockIndex.tree, value.NodeID, nextFreeInBlock);
 
             //insert cellStatus
             MemByte.Set(ref nextFreeInBlock, (byte)0);
 
             //insert CellID
-            MemInt64.Set(ref nextFreeInBlock, tx.CellID);
+            MemInt64.Set(ref nextFreeInBlock, value.NodeID);
 
             //insert hash(X)
-            MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
+            if (filters == null || ((IList)filters).Contains(Filter.Hash))
+            {
+                if (MemString.Set(ref nextFreeInBlock, value.Hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap) == false)
+                {
+                    lock (failedValues)
+                    {
+                        failedValues.Add(value);
+                    }
+                    return;
+                }
+            }
+            else
+                MemString.Jump(ref nextFreeInBlock);
 
             //insert time
-            MemInt64.Set(ref nextFreeInBlock, tx.time);
+            if (filters == null || ((IList)filters).Contains(Filter.Time))
+                MemInt64.Set(ref nextFreeInBlock, value.Time);
+            else
+                MemInt64.Jump(ref nextFreeInBlock);
 
             //insert ins(X)
-            MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, SetIn, null);
+            if (filters == null || ((IList)filters).Contains(Filter.In))
+            {
+                if (MemList.Set<In>(ref nextFreeInBlock, value.In, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, InHelper.Set, null) == false)
+                {
+                    lock (failedValues)
+                    {
+                        failedValues.Add(value);
+                    }
+                    return;
+                }
+            }
+            else
+                MemList.Jump(ref nextFreeInBlock);
 
             //insert outs(X)
-            MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
+            if (filters == null || ((IList)filters).Contains(Filter.Out))
+            {
+                if (MemList.Set<string>(ref nextFreeInBlock, value.Out, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null) == false)
+                {
+                    lock (failedValues)
+                    {
+                        failedValues.Add(value);
+                    }
+                    return;
+                }
+            }
+            else
+                MemList.Jump(ref nextFreeInBlock);
 
             //insert amount
-            MemInt64.Set(ref nextFreeInBlock, tx.amount);
+            if (filters == null || ((IList)filters).Contains(Filter.Amount))
+                MemInt64.Set(ref nextFreeInBlock, value.Amount);
+            else
+                MemInt64.Jump(ref nextFreeInBlock);
 
         }
 
         /// <summary>
         /// remote set txs
         /// </summary>
-        /// <param name="pendingIP">remote IP address</param>
-        /// <param name="pendingTxs">insert txs</param>
-        /// <param name="failedTxs">failed insert txs</param>
-        /// <returns>false if error case</returns>
-        private static void SetRemote(UInt32 pendingIP, List<TX> pendingTxs, List<TX> failedTxs)
+        /// <param name="remoteIP">remote machine ip to set</param>
+        /// <param name="values">values to set</param>
+        /// <param name="failedValues">values failed insert</param>
+        private static void SetRemote(UInt32 remoteIP, List<TX> values, Filter[] filters, List<TX> failedValues)
         {
-            RequestSocket req = reqSockets[pendingIP];
-            //generate request str
-            Request txReq = new Request();
-            txReq.reqType = "set";
-            StringBuilder body = new StringBuilder("[");
-            foreach (TX pendingTx in pendingTxs)
-            {
-                body.Append(pendingTx.ToString() + ',');
-            }
-            body.Remove(body.Length - 1, 1);
-            body.Append(']');
-            txReq.body = body.ToString();
-            string reqStr = JsonConvert.SerializeObject(txReq);
+            //request socket inited before
+            RequestSocket req = reqSockets[remoteIP];
+
+            //generate request object, format:{reqType: get, body:[jsonObj1, jsonObj2, ...]}
+            Request request = new Request();
+            request.type = "set";
+            request.filter = JsonConvert.SerializeObject(filters);
+            request.body = JsonConvert.SerializeObject(values);
+
             //send
-            req.Send(Encoding.UTF8.GetBytes(reqStr));
+            req.Send(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(request)));
+
             //receieve
-            string responseStr = Encoding.UTF8.GetString(req.Receive());
-            TX[] responses = JsonConvert.DeserializeObject<TX[]>(responseStr);
+            Response rep = JsonConvert.DeserializeObject<Response>(Encoding.UTF8.GetString(req.Receive()));
+
+            //add failed results
+            TX[] responses = JsonConvert.DeserializeObject<TX[]>(rep.errorResults);
             if (responses.Length > 0)
             {
                 foreach (TX response in responses)
                 {
-                    lock (failedTxs)
+                    lock (failedValues)
                     {
-                        failedTxs.Add(response);
+                        failedValues.Add(response);
                     }
                 }
             }
         }
-
-        //insert In struct
-        static bool SetIn(ref IntPtr memAddr, In input, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap)
-        {
-            //judge if has enough space for just cell 13
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(freeList, headAddr, ref tailAddr, blockLength, 13);
-            if (nextFreeInBlock.ToInt64() == 0)
-                return false;   //update false
-
-            //insert pointer
-            MemInt32.Set(ref memAddr, (Int32)(nextFreeInBlock.ToInt64() - memAddr.ToInt64() - sizeof(Int32)));
-
-            //struct length
-            IntPtr nextNextPartAddr = nextFreeInBlock + 13;
-
-            //insert inStatus
-            MemByte.Set(ref nextFreeInBlock, (byte)0);
-
-            //insert in_addr
-            MemString.Set(ref nextFreeInBlock, input.addr, freeList, headAddr, ref tailAddr, blockLength, gap);
-
-            //insert tx_index
-            MemInt64.Set(ref nextFreeInBlock, input.tx_index);
-
-            return true;
-        }
         #endregion insert operation
 
         #region remote response
-        //response the remote request
+        /// <summary>
+        /// listen remote request
+        /// </summary>
+        static void listenBegin()
+        {
+            Thread listener = new Thread(() =>
+            {
+                //begin listening
+                Response();
+            });
+            listener.Start();
+        }
+
+        /// <summary>
+        /// response the remote request, in background thread
+        /// </summary>
         public static void Response()
         {
             while (true)
             {
                 //receieve
-                string receiveJson = Encoding.UTF8.GetString(repSocket.Receive());
-                var receiveOjb = JsonConvert.DeserializeObject<Request>(receiveJson);
-                StringBuilder responseStr = new StringBuilder("[");
+                string remoteReqStr = Encoding.UTF8.GetString(repSocket.Receive());
+                Request remoteReq = JsonConvert.DeserializeObject<Request>(remoteReqStr);
+                Response rep = new Response();
 
-                if (receiveOjb.reqType == "get")
+                //GET request
+                if (remoteReq.type == "get")
                 {
-                    //GET response
-                    Int64[] keys = JsonConvert.DeserializeObject<Int64[]>(receiveOjb.body);
-                    List<Int64> failedKeys = new List<Int64>();
-                    List<TX> txs = new List<TX>();
+                    Filter[] filters = JsonConvert.DeserializeObject<Filter[]>(remoteReq.filter);
+                    Int64[] keys = JsonConvert.DeserializeObject<Int64[]>(remoteReq.body);
 
-                    //get inlocal
-                    Task.Factory.StartNew(() =>
-                    {
-                        Get(keys, txs, failedKeys);
-                    });
+                    List<TX> results = new List<TX>();
+                    List<Int64> errorResults = new List<Int64>();
 
-                    int timerCount = 0;
-                    while (txs.Count + failedKeys.Count < keys.Length)
-                    {
-                        Thread.Sleep(timerCount++);
-                    }
+                    //get in local
+                    Get(keys, filters, results, errorResults);
 
-                    foreach (TX tx in txs)
-                    {
-                        responseStr.Append(tx.ToString() + ",");
-                    }
-                    if (failedKeys.Count > 0)
-                    {
-                        //get error
-                    }
+                    //generate response
+                    rep.results = JsonConvert.SerializeObject(results);
+                    rep.errorResults = JsonConvert.SerializeObject(errorResults);
                 }
-                else if (receiveOjb.reqType == "set")
+                //SET request
+                else if (remoteReq.type == "set")
                 {
-                    //SET response
-                    TX[] txs = JsonConvert.DeserializeObject<TX[]>(receiveOjb.body);
-                    List<TX> outResults = new List<TX>();
+                    Filter[] filters = JsonConvert.DeserializeObject<Filter[]>(remoteReq.filter);
+                    TX[] values = JsonConvert.DeserializeObject<TX[]>(remoteReq.body);
+
+                    List<TX> errorResults = new List<TX>();
 
                     //set in local
-                    Task.Factory.StartNew(() =>
-                    {
-                        Set(txs, outResults);
-                    }).GetAwaiter().GetResult();
+                    Set(values, filters, errorResults);
 
-                    if (outResults.Count > 0)
-                    {
-                        foreach (TX setResult in outResults)
-                        {
-                            responseStr.Append(setResult.ToString() + ",");
-                        }
-                    }
-                    else
-                    {
-
-                    }
+                    //generate response
+                    rep.results = null;
+                    rep.errorResults = JsonConvert.SerializeObject(errorResults);
                 }
-                if (responseStr.Length > 1)
-                    responseStr.Remove(responseStr.Length - 1, 1);
-                responseStr.Append("]");
-                repSocket.Send(Encoding.UTF8.GetBytes(responseStr.ToString()));
-
+                repSocket.Send(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(rep)));
             }
         }
         #endregion remote response

@@ -10,8 +10,11 @@ namespace ToyGE
 {
     public class Request
     {
-        [JsonProperty("reqType")]
-        public string reqType;
+        [JsonProperty("type")]
+        public string type;
+
+        [JsonProperty("filter")]
+        public string filter;
 
         [JsonProperty("body")]
         public string body;
@@ -22,7 +25,7 @@ namespace ToyGE
         [JsonProperty("results")]
         public string results;
 
-        [JsonProperty("failedKeys")]
-        public string failedKeys;
+        [JsonProperty("errorResults")]
+        public string errorResults;
     }
 }

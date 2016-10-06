@@ -76,10 +76,6 @@
     <Prefer32Bit>true</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="AsyncIO, Version=0.1.20.0, Culture=neutral, PublicKeyToken=44a94435bd6f33f8, processorArchitecture=MSIL">
-      <HintPath>..\packages\AsyncIO.0.1.20.0\lib\net40\AsyncIO.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="Newtonsoft.Json, Version=9.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.9.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
       <Private>True</Private>
@@ -101,6 +97,7 @@
     <Compile Include="ARTInt64.cs" />
     <Compile Include="BTree.cs" />
     <Compile Include="Delegate.cs" />
+    <Compile Include="In.cs" />
     <Compile Include="Index.cs" />
     <Compile Include="Machine.cs" />
     <Compile Include="MachineInt64.cs" />
@@ -110,8 +107,7 @@
     <Compile Include="ReqRep.cs" />
     <Compile Include="Statistic.cs" />
     <Compile Include="TrieIndex.cs" />
-    <Compile Include="TxHelper.cs" />
-    <Compile Include="TxJson.cs" />
+    <Compile Include="Tx.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
