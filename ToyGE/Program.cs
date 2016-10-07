@@ -52,7 +52,10 @@ namespace ToyGE
 
                     List<TX> results = new List<TX>();
                     List<Int64> failedKeys = new List<Int64>();
-                    TxHelper.Get(keys, new TxHelper.Filter[] { (TxHelper.Filter)Enum.Parse(typeof(TxHelper.Filter), "Hash", true) }, results, failedKeys);
+                    TX condition = new TX();
+                    condition.Hash = "5daebb72d3e192c5261e2923cfec467014b9d764156756f4fb15105b600fd51a";
+                    condition.Time = 1290699547;
+                    TxHelper.Get(null, null, new TxHelper.Header[] { (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Hash", true), (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Time", true) }, new TX[1] { condition}, results, failedKeys);
 
                     if (results.Count != 0)
                         Console.WriteLine(JsonConvert.SerializeObject(results[0]));
@@ -146,11 +149,11 @@ namespace ToyGE
             //<ip, memory space>
             Dictionary<UInt32, Int64> machineInventory = new Dictionary<UInt32, Int64>();
             //local: 10.172.154.30
-            UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("192.168.0.136").GetAddressBytes(), 0);
-            machineInventory.Add(IP1, (Int64)1 << 32);
-            ////local: 10.172.154.30
-            //UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
+            //UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("192.168.0.136").GetAddressBytes(), 0);
             //machineInventory.Add(IP1, (Int64)1 << 32);
+            //local: 10.172.154.30
+            UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
+            machineInventory.Add(IP1, (Int64)1 << 32);
             ////remote: 10.86.170.172
             //UInt32 IP2 = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
             //machineInventory.Add(IP2, (Int64)1 << 32);
@@ -264,7 +267,7 @@ namespace ToyGE
             List<TX> outTxs = new List<TX>();
             List<Int64> failedKeys = new List<Int64>();
 
-            TxHelper.Get(keysArr, null, outTxs, failedKeys);
+            TxHelper.Get(keysArr, null, null, null, outTxs, failedKeys);
         }
     }
 }

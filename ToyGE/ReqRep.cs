@@ -13,11 +13,32 @@ namespace ToyGE
         [JsonProperty("type")]
         public string type;
 
-        [JsonProperty("filter")]
-        public string filter;
-
         [JsonProperty("body")]
         public string body;
+    }
+
+    public class GetRequest
+    {
+        [JsonProperty("keys")]
+        public string keys;
+
+        [JsonProperty("header")]
+        public string header;
+
+        [JsonProperty("conditionHeader")]
+        public string conditionHeader;
+
+        [JsonProperty("conditions")]
+        public string conditions;
+    }
+
+    public class SetRequest
+    {
+        [JsonProperty("header")]
+        public string header;
+
+        [JsonProperty("values")]
+        public string values;
     }
 
     public class Response

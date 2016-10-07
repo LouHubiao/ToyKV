@@ -8,13 +8,22 @@ using Newtonsoft.Json;
 
 namespace ToyGE
 {
-    public class In
+    public class In:IComparable
     {
         [JsonProperty("addr")]
         public string addr;
 
         [JsonProperty("tx_index")]
         public Int64 tx_index;
+
+        public int CompareTo(object obj)
+        {
+            In another = obj as In;
+            if (this.addr == another.addr && this.tx_index == another.tx_index)
+                return 0;
+            else
+                return this.addr.CompareTo(another.addr);
+        }
     }
 
     public class InHelper

@@ -18,7 +18,7 @@ namespace ToyGE
         public IntPtr tailAddr;
         public IntPtr[] freeList;
         public int blockLength;
-        public ARTInt64 blockIndex;
+        public ARTInt64 index;
 
         public BlockInt64(int blockLength)
         {
@@ -28,7 +28,7 @@ namespace ToyGE
             this.tailAddr = memAddr;
             this.freeList = new IntPtr[freeCount];
             this.blockLength = blockLength;
-            this.blockIndex = new ARTInt64();     //alloc blockIndex
+            this.index = new ARTInt64();     //alloc blockIndex
         }
     }
 
@@ -122,7 +122,7 @@ namespace ToyGE
         public static bool GetCellAddr(MachineIndexInt64 machineIndex, Int64 key, out IntPtr cellAddr)
         {
             //search in index and get addr
-            return ARTInt64.Search(machineIndex.block.blockIndex.tree, key, out cellAddr);
+            return ARTInt64.Search(machineIndex.block.index.tree, key, out cellAddr);
         }
     }
 }
