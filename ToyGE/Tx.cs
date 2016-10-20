@@ -114,11 +114,12 @@ namespace ToyGE
 
         public enum Header
         {
-            Hash = 1,
-            Time = 2,
-            In = 3,
-            Out = 4,
-            Amount = 5
+            CellID = 1,
+            Hash = 2,
+            Time = 3,
+            In = 4,
+            Out = 5,
+            Amount = 6
         }
 
         #region init
@@ -155,6 +156,7 @@ namespace ToyGE
         {
             //pay attention: the out txs art not same order with keys 
 
+            //V(key) function
             if (keys != null && keys.Length > 0)
             {
                 //which machine has this key
@@ -203,11 +205,16 @@ namespace ToyGE
                         }
                         else
                         {
-                            //local get, hlou: multiple threads for speed up
-                            if (GetOneCell(cellAddr, header, conditionHeader, conditions, results) == false)
+                            //local get, result add in results, hlou: multiple threads for speed up
+                            TX result;
+                            if (MeetCondition(cellAddr, conditionHeader, conditions, out result) == false)
                             {
                                 //not found or not meet conditon
                                 errorKeys.Add(key);
+                            }
+                            else
+                            {
+                                GetOneCell(cellAddr, header, result, results);
                             }
                         }
                     }
@@ -221,35 +228,67 @@ namespace ToyGE
             //has("property","value") function
             else
             {
-                HasLocal(header, conditionHeader, conditions, results);
-                HasRemote(header, conditionHeader, conditions, results);
+                Task remoteTask = HasRemote(header, conditionHeader, conditions, results);
+                Task localTask = HasLocal(header, conditionHeader, conditions, results);
+                remoteTask.Wait();
+                localTask.Wait();
             }
         }
 
-        static void HasLocal(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        public static void Out(TX[] values, string outName, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results, List<Int64> errorKeys)
+        {
+            if (outName == null || outName == "In")
+            {
+                List<Int64> outKeys = new List<Int64>();
+                foreach (TX value in values)
+                {
+                    foreach (In _in in value.In)
+                    {
+                        if (!outKeys.Contains(_in.tx_index))
+                            outKeys.Add(_in.tx_index);
+                    }
+                    Get(outKeys.ToArray(), header, conditionHeader, conditions, results, errorKeys);
+                }
+            }
+        }
+
+        private static async Task HasLocal(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
             foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
             {
                 if (index.machineIP == 0)
                 {
                     ARTInt64Node node = index.block.index.tree.root;
-                    HasLocalTraversal(node, header, conditionHeader, conditions, results);
+                    await Task.Run(() =>
+                    {
+                        HasLocalTraversal(node, header, conditionHeader, conditions, results);
+                    });
                 }
             }
+            return;
         }
 
-        static void HasRemote(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        private static async Task HasRemote(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
+            List<UInt32> remoteIPs = new List<UInt32>();
             foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
             {
-                if (index.machineIP != 0)
+                if (index.machineIP != 0 && !remoteIPs.Contains(index.machineIP))
                 {
-                    GetRemote(index.machineIP, null, header, conditionHeader, conditions, results, null);
+                    remoteIPs.Add(index.machineIP);
                 }
             }
+            foreach (UInt32 remoteIP in remoteIPs)
+            {
+                await Task.Run(() =>
+                {
+                    GetRemote(remoteIP, null, header, conditionHeader, conditions, results, null);
+                });
+            }
+            return;
         }
 
-        static void HasLocalTraversal(ARTInt64Node node, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        private static void HasLocalTraversal(ARTInt64Node node, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
             if (node == null)
             {
@@ -258,10 +297,128 @@ namespace ToyGE
 
             if (node.value.ToInt64() != 0)
             {
-                GetOneCell(node.value, header, conditionHeader, conditions, results);
+                TX result;
+                if (MeetCondition(node.value, conditionHeader, conditions, out result) == true)
+                {
+                    GetOneCell(node.value, header, result, results);
+                }
             }
             HasLocalTraversal(node.leftChild, header, conditionHeader, conditions, results);
             HasLocalTraversal(node.rightChild, header, conditionHeader, conditions, results);
+        }
+
+        private static bool MeetCondition(IntPtr cellAddr, Header[] conditionHeader, TX[] conditions, out TX result)
+        {
+            //result value
+            result = new TX();
+
+            // judge isDelete
+            byte status = MemByte.Get(ref cellAddr);
+            byte mask = 0x80;
+            if ((status & mask) != 0)
+            {
+                //deleted cell, no need get
+                return false;
+            }
+
+            if (conditions == null || conditions.Length == 0)
+            {
+                //no condition, return true
+                return true;
+            }
+
+            //or results for multiple condtions
+            bool[] orFails = new bool[(conditions == null) ? 0 : conditions.Length];
+
+            if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.CellID))
+            {
+                //read CellID
+                result.NodeID = MemInt64.Get(ref cellAddr);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    if (orFails[i] == false && conditions[i].NodeID != default(Int64) && result.NodeID != conditions[i].NodeID)
+                        orFails[i] = true;
+                }
+            }
+            else
+                MemInt64.Jump(ref cellAddr);
+
+            //read Hash
+            if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Hash))
+            {
+                result.Hash = MemString.Get(ref cellAddr);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    if (orFails[i] == false && conditions[i].Hash != null && result.Hash != conditions[i].Hash)
+                        orFails[i] = true;
+                }
+            }
+            else
+                MemString.Jump(ref cellAddr);
+
+            //read Time
+            if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Time))
+            {
+                result.Time = MemInt64.Get(ref cellAddr);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    if (orFails[i] == false && conditions[i].Time != default(long) && result.Time != conditions[i].Time)
+                        orFails[i] = true;
+                }
+            }
+            else
+                MemInt64.Jump(ref cellAddr);
+
+            //read ins
+            if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.In))
+            {
+                result.In = MemList.Get<In>(ref cellAddr, InHelper.Get);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    if (orFails[i] == false && conditions[i].In != null && result.In.SequenceEqual(conditions[i].In) == false)
+                        orFails[i] = true;
+                }
+            }
+            else
+                MemList.Jump(ref cellAddr);
+
+            //read Out
+            if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Out))
+            {
+                result.Out = MemList.Get<string>(ref cellAddr, MemString.Get);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    if (orFails[i] == false && conditions[i].Out != null && result.Out.SequenceEqual(conditions[i].Out) == false)
+                        orFails[i] = true;
+                }
+            }
+            else
+                MemString.Jump(ref cellAddr);
+
+            //read Amount
+            if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Amount))
+            {
+                result.Amount = MemInt64.Get(ref cellAddr);
+                for (int i = 0; i < conditions.Length; i++)
+                {
+                    if (orFails[i] == false && conditions[i].Amount != default(Int64) && result.Amount != conditions[i].Amount)
+                        orFails[i] = true;
+                }
+            }
+            else
+                MemInt64.Jump(ref cellAddr);
+
+            foreach (bool orFail in orFails)
+            {
+                //meet or condition
+                if (orFail == false)
+                {
+                    //meet one condition in or
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -271,133 +428,63 @@ namespace ToyGE
         /// <param name="key">input key</param>
         /// <param name="results">return results(has value, must locked before update)</param>
         /// <param name="errorKeys">failed keys</param>
-        private static bool GetOneCell(IntPtr cellAddr, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        private static void GetOneCell(IntPtr cellAddr, Header[] header, TX result, List<TX> results)
         {
             //pay attention: results and errorKeys has data before, for multiple threads speed up
 
-            // judge isDelete
+            //read status
             byte status = MemByte.Get(ref cellAddr);
-            byte mask = 0x80;
-            if ((status & mask) != 0)
-            {
-                //deleted cell
-                return false;
-            }
-
-            TX tx = new TX();
 
             //read CellID
-            tx.NodeID = MemInt64.Get(ref cellAddr);
+            if (result.NodeID == default(Int64) && (header == null || ((IList)header).Contains(Header.CellID)))
+            {
+                result.NodeID = MemInt64.Get(ref cellAddr);
+            }
+            else
+                MemInt64.Jump(ref cellAddr);
 
-            //or results for multiple condtions
-            bool[] orFails = new bool[(conditions == null) ? 0 : conditions.Length];
 
             //read Hash
-            if (header == null || ((IList)header).Contains(Header.Hash))
+            if (result.Hash == null && (header == null || ((IList)header).Contains(Header.Hash)))
             {
-                tx.Hash = MemString.Get(ref cellAddr);
-                if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Hash))
-                {
-                    for (int i = 0; i < conditions.Length; i++)
-                    {
-                        if (orFails[i] == false && conditions[i].Hash != null && tx.Hash != conditions[i].Hash)
-                            orFails[i] = true;
-                    }
-                }
+                result.Hash = MemString.Get(ref cellAddr);
             }
             else
                 MemString.Jump(ref cellAddr);
 
             //read Time
-            if (header == null || ((IList)header).Contains(Header.Time))
+            if (result.Time == default(Int64) && (header == null || ((IList)header).Contains(Header.Time)))
             {
-                tx.Time = MemInt64.Get(ref cellAddr);
-                if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Time))
-                {
-                    for (int i = 0; i < conditions.Length; i++)
-                    {
-                        if (orFails[i] == false && conditions[i].Time != default(long) && tx.Time != conditions[i].Time)
-                            orFails[i] = true;
-                    }
-                }
+                result.Time = MemInt64.Get(ref cellAddr);
             }
             else
                 MemInt64.Jump(ref cellAddr);
 
             //read ins
-            if (header == null || ((IList)header).Contains(Header.In))
+            if (result.In == null && (header == null || ((IList)header).Contains(Header.In)))
             {
-                tx.In = MemList.Get<In>(ref cellAddr, InHelper.Get);
-                if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.In))
-                {
-                    for (int i = 0; i < conditions.Length; i++)
-                    {
-                        if (orFails[i] == false && conditions[i].In != null && tx.In.SequenceEqual(conditions[i].In) == false)
-                            orFails[i] = true;
-                    }
-                }
+                result.In = MemList.Get<In>(ref cellAddr, InHelper.Get);
             }
             else
                 MemList.Jump(ref cellAddr);
 
             //read Out
-            if (header == null || ((IList)header).Contains(Header.Out))
+            if (result.Out == null && (header == null || ((IList)header).Contains(Header.Out)))
             {
-                tx.Out = MemList.Get<string>(ref cellAddr, MemString.Get);
-                if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Out))
-                {
-                    for (int i = 0; i < conditions.Length; i++)
-                    {
-                        if (orFails[i] == false && conditions[i].Out != null && tx.Out.SequenceEqual(conditions[i].Out) == false)
-                            orFails[i] = true;
-                    }
-                }
+                result.Out = MemList.Get<string>(ref cellAddr, MemString.Get);
             }
             else
                 MemString.Jump(ref cellAddr);
 
             //read Amount
-            if (header == null || ((IList)header).Contains(Header.Amount))
+            if (result.Amount == default(Int64) && (header == null || ((IList)header).Contains(Header.Amount)))
             {
-                tx.Amount = MemInt64.Get(ref cellAddr);
-                if (conditionHeader != null && ((IList)conditionHeader).Contains(Header.Amount))
-                {
-                    for (int i = 0; i < conditions.Length; i++)
-                    {
-                        if (orFails[i] == false && conditions[i].Amount != default(Int64) && tx.Amount != conditions[i].Amount)
-                            orFails[i] = true;
-                    }
-                }
+                result.Amount = MemInt64.Get(ref cellAddr);
             }
             else
                 MemInt64.Jump(ref cellAddr);
 
-            if (orFails.Length == 0)
-            {
-                //lock results for multiple threads
-                lock (results)
-                {
-                    results.Add(tx);
-                }
-                return true;
-            }
-
-            foreach (bool orFail in orFails)
-            {
-                //meet or condition
-                if (orFail == false)
-                {
-                    //lock results for multiple threads
-                    lock (results)
-                    {
-                        results.Add(tx);
-                    }
-                    return true;
-                }
-            }
-
-            //not meet condition
-            return false;
+            results.Add(result);
         }
 
         /// <summary>
@@ -652,7 +739,7 @@ namespace ToyGE
         /// <summary>
         /// response the remote request, in background thread
         /// </summary>
-        public static void Response()
+        public async static void Response()
         {
             while (true)
             {
@@ -673,7 +760,7 @@ namespace ToyGE
                     List<TX> results = new List<TX>();
                     List<Int64> errorResults = new List<Int64>();
 
-                    if (keys.Length > 0)
+                    if (keys != null && keys.Length > 0)
                     {
                         //get in local
                         Get(keys, header, conditionHeader, conditions, results, errorResults);
@@ -681,7 +768,7 @@ namespace ToyGE
                     else
                     {
                         //has function
-                        HasLocal(header, conditionHeader, conditions, results);
+                        await HasLocal(header, conditionHeader, conditions, results);
                     }
 
                     //generate response

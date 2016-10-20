@@ -53,20 +53,26 @@ namespace ToyGE
         {
             this.BlockSize = blockSize;
             Int16 indexBegin = 0;
-            int offset = (Int16.MaxValue - indexBegin) / machineInventory.Count();
-            Int16 indexEnd = (Int16)(indexBegin + offset);
-            
-            //local ip is 0
+            Int16 indexEnd = 0;
+
+            Int64 memSizeSum = machineInventory.Values.Sum();
+            List<Tuple<UInt32, Int64, int, Int16, Int16>> machineInfo = new List<Tuple<UInt32, Int64, int, Int16, Int16>>();
             foreach (var item in machineInventory)
             {
-                //init one block
                 int blockCount = (Int32)(item.Value / BlockSize);
-                if (localIPs.Contains(item.Key))
-                    AddMachine(0, blockCount, BlockSize, indexBegin, indexEnd);
-                else
-                    AddMachine(item.Key, blockCount, BlockSize, indexBegin, indexEnd);
-                indexBegin = indexEnd;
+                Int16 offset = (Int16)(Int16.MaxValue * ((float)item.Value / memSizeSum));
                 indexEnd = (Int16)(indexBegin + offset);
+                machineInfo.Add(new Tuple<UInt32, Int64, int, Int16, Int16>(item.Key, item.Value, blockCount, indexBegin, indexEnd));
+                indexBegin = indexEnd;
+            }
+
+            foreach (Tuple<UInt32, Int64, int, Int16, Int16> item in machineInfo)
+            {
+                //local ip is 0
+                if (localIPs.Contains(item.Item1))
+                    AddMachine(0, item.Item3, BlockSize, item.Item4, item.Item5);
+                else
+                    AddMachine(item.Item1, item.Item3, BlockSize, item.Item4, item.Item5);
             }
         }
 

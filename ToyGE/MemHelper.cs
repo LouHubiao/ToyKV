@@ -497,7 +497,8 @@ namespace ToyGE
         static unsafe string GetChars(ref IntPtr memAddr, int length)
         {
             byte[] resultBytes = new byte[length];
-            CopyBytesFromMem((byte*)(memAddr.ToPointer()), 0, resultBytes, 0, length);
+            if (length > 0)
+                CopyBytesFromMem((byte*)(memAddr.ToPointer()), 0, resultBytes, 0, length);
             string result = System.Text.Encoding.ASCII.GetString(resultBytes);
             memAddr += length;
             return result;
@@ -972,7 +973,7 @@ namespace ToyGE
         public static unsafe IntPtr GetFreeInBlock<T>(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 fullLength)
         {
             Int16 freeLength = (Int16)(fullLength / 64);
-            if (freeList[freeLength].ToInt64() != 0)
+            if (freeLength > 0 && freeLength < freeList.Length && freeList[freeLength].ToInt64() != 0)
             {
                 //get free addr
                 IntPtr result = freeList[freeLength];
