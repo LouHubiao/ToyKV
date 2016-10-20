@@ -60,7 +60,7 @@ namespace ToyGE
 
 
                     List<TX> outResults = new List<TX>();
-                    TxHelper.Out(hasResult.ToArray(), "In", null, null, null, outResults, failedKeys);
+                    TxHelper.Hop(hasResult.ToArray(), "In", null, null, null, outResults, failedKeys);
 
                     if (outResults.Count != 0)
                         Console.WriteLine(JsonConvert.SerializeObject(outResults[0]));

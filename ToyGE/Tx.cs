@@ -235,23 +235,41 @@ namespace ToyGE
             }
         }
 
-        public static void Out(TX[] values, string outName, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results, List<Int64> errorKeys)
+        /// <summary>
+        /// get edges
+        /// </summary>
+        /// <param name="sourceValues">source nodes</param>
+        /// <param name="outName">edge label, null to get all</param>
+        /// <param name="header">header filter</param>
+        /// <param name="conditionHeader"></param>
+        /// <param name="conditions"></param>
+        /// <param name="results"></param>
+        /// <param name="errorKeys"></param>
+        public static void Hop(TX[] sourceValues, string outName, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results, List<Int64> errorKeys)
         {
+            List<Int64> outKeys = new List<Int64>();
             if (outName == null || outName == "In")
             {
-                List<Int64> outKeys = new List<Int64>();
-                foreach (TX value in values)
+                foreach (TX value in sourceValues)
                 {
                     foreach (In _in in value.In)
                     {
                         if (!outKeys.Contains(_in.tx_index))
                             outKeys.Add(_in.tx_index);
                     }
-                    Get(outKeys.ToArray(), header, conditionHeader, conditions, results, errorKeys);
                 }
             }
+            Get(outKeys.ToArray(), header, conditionHeader, conditions, results, errorKeys);
         }
 
+        /// <summary>
+        /// look the whole db to find the nodes who meets the condtions
+        /// </summary>
+        /// <param name="header">header filter</param>
+        /// <param name="conditionHeader"></param>
+        /// <param name="conditions"></param>
+        /// <param name="results">return results</param>
+        /// <returns></returns>
         private static async Task HasLocal(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
             foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
