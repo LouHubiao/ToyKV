@@ -239,16 +239,16 @@ namespace ToyGE
         /// get edges
         /// </summary>
         /// <param name="sourceValues">source nodes</param>
-        /// <param name="outName">edge label, null to get all</param>
+        /// <param name="edgeLabel">edge label, null to get all</param>
         /// <param name="header">header filter</param>
         /// <param name="conditionHeader"></param>
         /// <param name="conditions"></param>
         /// <param name="results"></param>
         /// <param name="errorKeys"></param>
-        public static void Hop(TX[] sourceValues, string outName, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results, List<Int64> errorKeys)
+        public static void Hop(TX[] sourceValues, string edgeLabel, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results, List<Int64> errorKeys)
         {
             List<Int64> outKeys = new List<Int64>();
-            if (outName == null || outName == "In")
+            if (edgeLabel == null || edgeLabel == "In")
             {
                 foreach (TX value in sourceValues)
                 {
@@ -560,7 +560,7 @@ namespace ToyGE
         #endregion search operation
 
 
-        #region insert operation
+        #region set operation
         /// <summary>
         /// convert object to byte[] in memory
         /// </summary>
@@ -738,7 +738,7 @@ namespace ToyGE
                 }
             }
         }
-        #endregion insert operation
+        #endregion set operation
 
         #region remote response
         /// <summary>
@@ -863,7 +863,7 @@ namespace ToyGE
 
         public static void DeleteIn(ref IntPtr memAddr, IntPtr[] freeAddrs)
         {
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //jump status
             offsetMemAddr = offsetMemAddr + 1;

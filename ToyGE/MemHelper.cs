@@ -5,11 +5,13 @@ using System.Runtime.InteropServices;
 
 /*
 memory struct:
-    string: status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
-    list:   status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
+    string: status(8)| fullLength(16)| Body| [CurLength(16)]| [NextOffset(32)]|
+    list:   status(8)| fullLength(16)| Body| [CurLength(16)]| [NextOffset(32)]|
     struct: status(8)| Body|
     cell:   status(8)| nextNode(32)| preNode(32)| Body|
     deleted:status(8)| length(16)|
+
+    fullLength is the length of Body, curLength is the length of content
 
 status:
     string: isDeleted| hasNext| isFull| ...
@@ -20,21 +22,40 @@ status:
 
 namespace ToyGE
 {
-    //this class is for the usual tool about memory management
+    /// <summary>
+    /// the usual tool about memory management of different structure
+    /// </summary>
     class MemTool
     {
-        //Get next address by offset, return addr pointer, offset is from memAddr + sizeof(Int32)
-        public static unsafe IntPtr GetOffsetedAddr(ref IntPtr memAddrBeforeOffset)
+        //, return addr pointer, offset is from memAddr + sizeof(Int32)
+        /// <summary>
+        /// Get next address by offset, result = memAddr + sizeof(Int32) + *(memAddr)
+        /// </summary>
+        /// <param name="memAddr">Addr Before Offset</param>
+        /// <returns>offseted address</returns>
+        public static unsafe IntPtr GetAddrByAddrBeforeOffset(ref IntPtr memAddr)
         {
-            Int32 offset = MemInt32.Get(ref memAddrBeforeOffset);
-            //memAddrBeforeOffset has changed to memAddrAfterOffset
-            return memAddrBeforeOffset + offset;
+            Int32 offset = MemInt32.Get(ref memAddr);
+            //memAddrBeforeOffset has been changed
+            return memAddr + offset;
+        }
+
+        /// <summary>
+        /// get the curLength, result = *(memAddr + length)
+        /// </summary>
+        /// <param name="memAddr"></param>
+        /// <param name="length"></param>
+        /// <returns></returns>
+        public static unsafe Int16 GetCurLength(IntPtr memAddr, Int16 length)
+        {
+            IntPtr curLengthAddr = memAddr + length;
+            return MemInt16.Get(ref curLengthAddr);
         }
 
         //get nextOffset(Int32) address at the tail
         public static unsafe IntPtr GetNextOffsetAddr(IntPtr memAddr, Int16 length)
         {
-            return memAddr + length - sizeof(Int32);
+            return memAddr + length + sizeof(Int16);
         }
 
         //set nextOffset(Int32) at tail
@@ -64,31 +85,34 @@ namespace ToyGE
             memAddr += interval;
         }
 
-        //get content Length for string and list, bytelength is the length from 'bytelength' in memory model
-        public static unsafe Int16 GetByteLength<T>(Int16 count, Int16 gap)
+        /// <summary>
+        /// get the fullLength, reuslt = (count+gap)*sizeof(T)
+        /// </summary>
+        /// <typeparam name="T">byte or type in list</typeparam>
+        /// <param name="count"></param>
+        /// <param name="gap"></param>
+        /// <returns></returns>
+        public static unsafe Int16 GetFullLength<T>(int count, Int16 gap)
         {
-            Int16 byteLength = 0;
-
             if (typeof(T).IsValueType)
-            {
-                byteLength = (Int16)((count + gap) * Marshal.SizeOf<T>());
-                if (gap != 0)
-                {
-                    //add curCountSize
-                    Int16 curCountSize = (Int16)(Marshal.SizeOf<T>() > sizeof(Int16) ? (Int16)Marshal.SizeOf<T>() : sizeof(Int16));
-                    byteLength = (Int16)(byteLength + curCountSize);
-                }
-            }
+                return (Int16)((count + gap) * Marshal.SizeOf<T>());
             else
-            {
-                byteLength = (Int16)((count + gap) * sizeof(Int32));
-                if (gap != 0)
-                {
-                    //add curCountSize
-                    byteLength = (Int16)(byteLength + sizeof(Int32));
-                }
-            }
-            return byteLength;
+                return (Int16)((count + gap) * sizeof(Int32));
+        }
+
+        /// <summary>
+        /// get structure Length for string or list, result = sizeof(status)+sizeof(fullLength) + fullLength + sizeof(curLength) + sizeof(nextOffset)
+        /// </summary>
+        /// <typeparam name="T">byte or type in list</typeparam>
+        /// <param name="count"></param>
+        /// <param name="gap"></param>
+        /// <returns></returns>
+        public static unsafe int GetNeedMemlength<T>(int count, Int16 gap)
+        {
+            int result = sizeof(Byte) + sizeof(Int16);
+            Int16 fullLength = GetFullLength<T>(count, gap);
+            result += fullLength + sizeof(Int16) + sizeof(Int32);
+            return fullLength;
         }
     }
 
@@ -190,6 +214,11 @@ namespace ToyGE
             return isDeleted > 0;
         }
 
+        /// <summary>
+        /// return true if memory part has next content
+        /// </summary>
+        /// <param name="status">status of structure</param>
+        /// <returns></returns>
         public static bool GetHasNext(byte status)
         {
             byte mask = 0x40;
@@ -197,6 +226,11 @@ namespace ToyGE
             return hasNext > 0;
         }
 
+        /// <summary>
+        /// return true if memory part has full content
+        /// </summary>
+        /// <param name="status">status of structure</param>
+        /// <returns></returns>
         public static bool GetIsFull(byte status)
         {
             byte mask = 0x20;
@@ -254,7 +288,7 @@ namespace ToyGE
         public static string Get(ref IntPtr memAddr)
         {
             //get offseted addr
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //get status
             byte status = MemByte.Get(ref offsetMemAddr);
@@ -274,7 +308,7 @@ namespace ToyGE
                 StringBuilder strBuilder = new StringBuilder();
                 strBuilder.Append(GetChars(ref offsetMemAddr, length - sizeof(Int32)));
 
-                IntPtr nextPartAddr = MemTool.GetOffsetedAddr(ref offsetMemAddr);
+                IntPtr nextPartAddr = MemTool.GetAddrByAddrBeforeOffset(ref offsetMemAddr);
                 strBuilder.Append(Get(ref nextPartAddr));
 
                 return strBuilder.ToString();
@@ -291,7 +325,7 @@ namespace ToyGE
         public static bool Set(ref IntPtr memAddr, string content, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap)
         {
             //get nextFreeAddr in this block
-            Int16 byteLength = MemTool.GetByteLength<byte>((Int16)content.Length, gap);
+            Int16 byteLength = MemTool.GetNeedMemlength<byte>((Int16)content.Length, gap);
             Int16 fullLength = (Int16)(sizeof(byte) + sizeof(Int16) + byteLength);
             IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(freeList, headAddr, ref tailAddr, blockLength, fullLength);
             if (nextFreeInBlock.ToInt64() == 0)
@@ -341,7 +375,7 @@ namespace ToyGE
             IntPtr memAddrCopy = memAddr;
 
             //get offseted addr
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //delete offset pointer
             *(Int32*)(memAddrCopy.ToPointer()) = 0;
@@ -381,7 +415,7 @@ namespace ToyGE
         public static unsafe bool Update(ref IntPtr memAddr, ref string newValue, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap)
         {
             //get offseted addr
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //get status
             byte* status = (byte*)(offsetMemAddr.ToPointer());
@@ -558,59 +592,53 @@ namespace ToyGE
         //get entire list, getListPart like GetString()
         public static List<T> Get<T>(ref IntPtr memAddr, Delegate<T>.GetItem getItem)
         {
-            //last result
             List<T> result = new List<T>();
 
-            //get offseted addr
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            //get list values begin addr
+            IntPtr ListAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //get status
-            byte status = MemByte.Get(ref offsetMemAddr);
+            byte status = MemByte.Get(ref ListAddr);
 
             //get length
-            Int16 byteLength = MemInt16.Get(ref offsetMemAddr);
+            Int16 fullLength = MemInt16.Get(ref ListAddr);
 
-            //get context
+            //get lastAddr/nextOffsetAddr
+            IntPtr lastAddr;
+            IntPtr nextOffsetAddr = IntPtr.Zero;
             if (MemStatus.GetIsFull(status) == true)
+                lastAddr = ListAddr + fullLength;
+            else if (MemStatus.GetHasNext(status) == true)
             {
-                IntPtr lastAddr = offsetMemAddr + byteLength;
-                while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
-                {
-                    result.Add(getItem(ref offsetMemAddr));
-                }
+                lastAddr = ListAddr + fullLength;
+                nextOffsetAddr = MemTool.GetNextOffsetAddr(ListAddr, fullLength);
             }
             else
             {
-                if (MemStatus.GetHasNext(status) == true)
-                {
-                    IntPtr lastAddr = MemTool.GetNextOffsetAddr(offsetMemAddr, byteLength);
-                    while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
-                    {
-                        result.Add(getItem(ref offsetMemAddr));
-                    }
-
-                    //next part
-                    result.AddRange(Get<T>(ref offsetMemAddr, getItem));
-                }
-                else
-                {
-                    Int16 curCount = MemTool.GetCurCount(offsetMemAddr, byteLength);
-                    for (int i = 0; i < curCount; i++)
-                    {
-                        result.Add(getItem(ref offsetMemAddr));
-                    }
-                }
+                //not full
+                Int16 curLength = MemTool.GetCurLength(ListAddr, fullLength);
+                lastAddr = ListAddr + curLength;
             }
+
+            //add item into list
+            while (ListAddr.ToInt64() < lastAddr.ToInt64())
+                result.Add(getItem(ref ListAddr));
+
+            //recursion next part list
+            if (MemStatus.GetHasNext(status) == true)
+            {
+                result.AddRange(MemList.Get<T>(ref nextOffsetAddr, getItem));
+            }
+
             return result;
         }
 
         //insert list, maybe failed and return false
-        public static bool Set<T>(ref IntPtr memAddr, List<T> inputs, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap, Delegate<T>.InsertItem_Object insertItem_Object, Delegate<T>.InsertItem_Value insertItem_Value)
+        public static bool Set<T>(ref IntPtr memAddr, List<T> inputs, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 defaultGap, Delegate<T>.InsertItem_Object insertItem_Object, Delegate<T>.InsertItem_Value insertItem_Value)
         {
-            //get nextFreeAddr in this block, only for list, maybe not enough for items
-            Int16 byteLength = (Int16)(MemTool.GetByteLength<T>((Int16)inputs.Count, gap));
-            Int16 fullLength = (Int16)(sizeof(byte) + sizeof(Int16) + byteLength);
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<T>(freeList, headAddr, ref tailAddr, blockLength, fullLength);
+            //get nextFreeAddr in this block, only for list, maybe not enough for all items
+            int memLength = MemTool.GetNeedMemlength<T>(inputs.Count, defaultGap);
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock(freeList, headAddr, ref tailAddr, blockLength, memLength);
             if (nextFreeInBlock.ToInt64() == 0)
                 return false;   //update false
 
@@ -624,14 +652,12 @@ namespace ToyGE
             MemByte.Set(ref nextFreeInBlock, (byte)0x00);
 
             //insert length with gap
-            MemInt16.Set(ref nextFreeInBlock, byteLength);
+            Int16 fullLength = MemTool.GetFullLength<T>(inputs.Count, defaultGap);
+            MemInt16.Set(ref nextFreeInBlock, fullLength);
 
             //insert list part context
             for (int i = 0; i < inputs.Count; i++)
             {
-                //update curLength, if faild, not delete inserted items
-                MemTool.SetCurCount(nextFreeInBlockCopy + sizeof(byte) + sizeof(Int16), byteLength, (Int16)i);
-
                 if (typeof(T).IsValueType)
                 {
                     if (insertItem_Value(ref nextFreeInBlock, inputs[i]) == false)
@@ -639,13 +665,19 @@ namespace ToyGE
                 }
                 else
                 {
-                    if (insertItem_Object(ref nextFreeInBlock, inputs[i], freeList, headAddr, ref tailAddr, blockLength, gap) == false)
+                    if (insertItem_Object(ref nextFreeInBlock, inputs[i], freeList, headAddr, ref tailAddr, blockLength, defaultGap) == false)
                         return false;
                 }
             }
 
+            //update curLength
+            if (defaultGap != 0)
+            {
+                MemTool.SetCurCount(nextFreeInBlockCopy + sizeof(byte) + sizeof(Int16), memLength, (Int16)i);
+            }
+
             //update infomation
-            if (gap != 0)
+            if (defaultGap != 0)
             {
                 //insert curLength
                 MemTool.SetCurCount(nextFreeInBlockCopy, fullLength, (Int16)inputs.Count);
@@ -666,7 +698,7 @@ namespace ToyGE
             IntPtr memAddrCopy = memAddr;
 
             //get offseted addr
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //delete offset pointer
             *(Int32*)(memAddrCopy.ToPointer()) = 0;
@@ -731,7 +763,7 @@ namespace ToyGE
         public unsafe static bool Add<T>(IntPtr memAddr, T item, IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int32 blockLength, Int16 gap, Delegate<T>.InsertItem_Object insertItem_Object, Delegate<T>.InsertItem_Value insertItem_Value, Delegate<T>.GetItem getItem)
         {
             //get offseted addr
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //get status
             byte* status = (byte*)(offsetMemAddr.ToPointer());
@@ -743,7 +775,7 @@ namespace ToyGE
             //add content
             if (MemStatus.GetIsFull(*status) == true)
             {
-                //get remove count, need remove some items
+                //get remove count, need remove some items where update for pointer to next part
                 int removeCount = 0;
                 if (typeof(T).IsValueType)
                     removeCount = (sizeof(Int32) - 1) / Marshal.SizeOf<T>() + 1;
@@ -751,7 +783,7 @@ namespace ToyGE
                     removeCount = 1;
 
                 //return 0 if not have enough free memory for last items and (+1)new item
-                Int16 subList_byteLength = (Int16)(MemTool.GetByteLength<T>((Int16)(removeCount + 1), gap));
+                Int16 subList_byteLength = (Int16)(MemTool.GetNeedMemlength<T>((Int16)(removeCount + 1), gap));
                 Int16 subList_fullLength = (Int16)(sizeof(byte) + sizeof(Int16) + subList_byteLength);
                 IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<T>(freeList, headAddr, ref tailAddr, blockLength, subList_fullLength);
                 if (nextFreeInBlock.ToInt64() == 0)
@@ -969,25 +1001,30 @@ namespace ToyGE
             }
         }
 
-        //get free space from current memory block, return 0 if has not enough space, only for stirng and list
-        public static unsafe IntPtr GetFreeInBlock<T>(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 fullLength)
+        /// <summary>
+        /// get free space from current free list or memory block, return 0 if has not enough space
+        /// </summary>
+        /// <param name="freeList"></param>
+        /// <param name="headAddr"></param>
+        /// <param name="tailAddr"></param>
+        /// <param name="blockLength"></param>
+        /// <param name="memLength"></param>
+        /// <returns></returns>
+        public static unsafe IntPtr GetFreeInBlock(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, int memLength)
         {
-            Int16 freeLength = (Int16)(fullLength / 64);
-            if (freeLength > 0 && freeLength < freeList.Length && freeList[freeLength].ToInt64() != 0)
+            int lengthIndex = memLength / 8;
+            if (lengthIndex > 0 && lengthIndex < freeList.Length && freeList[lengthIndex].ToInt64() != 0)
             {
-                //get free addr
-                IntPtr result = freeList[freeLength];
-
+                IntPtr result = freeList[lengthIndex];
                 //update freeList
-                freeList[freeLength] = GetFreeNext(result);
-
+                freeList[lengthIndex] = GetFreeNext(result);
                 return result;
             }
-            else if (headAddr.ToInt64() + blockLength - tailAddr.ToInt64() > fullLength)
+            else if (headAddr.ToInt64() + blockLength - tailAddr.ToInt64() > memLength)
             {
                 //update tailLength
                 IntPtr tailAddrCopy = tailAddr;
-                tailAddr += fullLength;
+                tailAddr += memLength;
                 return tailAddrCopy;
             }
             else

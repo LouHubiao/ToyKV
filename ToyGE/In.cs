@@ -37,7 +37,7 @@ namespace ToyGE
         {
             In result = new In();
 
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref structAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref structAddr);
 
             byte status = MemByte.Get(ref offsetMemAddr);
 
