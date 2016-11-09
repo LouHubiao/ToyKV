@@ -50,15 +50,20 @@ namespace ToyGE
                     Console.WriteLine("SearchNode begin..." + DateTime.Now.ToString("hh:mm:ss fff"));
                     Int64[] keys = new Int64[] { Int64.Parse(inputs[1]) };
 
-                    List<TX> results = new List<TX>();
+                    List<TX> hasResult = new List<TX>();
                     List<Int64> failedKeys = new List<Int64>();
                     TX condition = new TX();
                     condition.Hash = "5daebb72d3e192c5261e2923cfec467014b9d764156756f4fb15105b600fd51a";
                     condition.Time = 1290699547;
-                    TxHelper.Get(null, null, new TxHelper.Header[] { (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Hash", true), (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Time", true) }, new TX[1] { condition }, results, failedKeys);
+                    //TxHelper.Get(null, null, new TxHelper.Header[] { (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Hash", true), (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Time", true) }, new TX[1] { condition }, hasResult, failedKeys);
+                    TxHelper.Get(null, null, new TxHelper.Header[] { (TxHelper.Header)Enum.Parse(typeof(TxHelper.Header), "Hash", true)}, new TX[1] { condition }, hasResult, failedKeys);
 
-                    if (results.Count != 0)
-                        Console.WriteLine(JsonConvert.SerializeObject(results[0]));
+
+                    List<TX> outResults = new List<TX>();
+                    TxHelper.Hop(hasResult.ToArray(), "In", null, null, null, outResults, failedKeys);
+
+                    if (outResults.Count != 0)
+                        Console.WriteLine(JsonConvert.SerializeObject(outResults[0]));
                     else
                         Console.WriteLine("null!");
                     Console.WriteLine("SearchNode end..." + DateTime.Now.ToString("hh:mm:ss fff"));
@@ -151,15 +156,15 @@ namespace ToyGE
             //local: 10.172.154.30
             //UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("192.168.0.136").GetAddressBytes(), 0);
             //machineInventory.Add(IP1, (Int64)1 << 32);
-            //local: 10.172.154.30
+            //8PQCZX1: 10.172.154.30
             //UInt32 IP1 = BitConverter.ToUInt32(IPAddress.Parse("10.172.154.30").GetAddressBytes(), 0);
             //machineInventory.Add(IP1, (Int64)1 << 32);
-            //remote: 10.86.170.172
-            UInt32 IP2 = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
-            machineInventory.Add(IP2, (Int64)1 << 33);
-            ////graph21: 10.190.172.115
-            //UInt32 IP3 = BitConverter.ToUInt32(IPAddress.Parse("10.190.172.115").GetAddressBytes(), 0);
-            //machineInventory.Add(IP3, (Int64)1 << 36);
+            ////remote: 10.86.170.172
+            //UInt32 IP2 = BitConverter.ToUInt32(IPAddress.Parse("10.172.96.46").GetAddressBytes(), 0);
+            //machineInventory.Add(IP2, (Int64)1 << 32);
+            //graph21: 10.190.172.115
+            UInt32 IP3 = BitConverter.ToUInt32(IPAddress.Parse("10.190.172.115").GetAddressBytes(), 0);
+            machineInventory.Add(IP3, (Int64)1 << 36);
 
             //exclude localIP
             List<UInt32> localIPs = new List<UInt32>();
@@ -169,11 +174,12 @@ namespace ToyGE
                 if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                 {
                     UInt32 localIP = BitConverter.ToUInt32(ip.GetAddressBytes(), 0);
+                    Console.WriteLine("localIP:" + localIP);
                     if (!localIPs.Contains(localIP))
                         localIPs.Add(localIP);
                     //IP3 special
-                    //if (localIP == 583532201)
-                    //    localIPs.Add(IP3);
+                    if (localIP == 583532201)
+                        localIPs.Add(IP3);
                 }
             }
             //console local ip address

@@ -235,7 +235,42 @@ namespace ToyGE
             }
         }
 
-        static async Task HasLocal(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        /// <summary>
+        /// get edges
+        /// </summary>
+        /// <param name="sourceValues">source nodes</param>
+        /// <param name="edgeLabel">edge label, null to get all</param>
+        /// <param name="header">header filter</param>
+        /// <param name="conditionHeader"></param>
+        /// <param name="conditions"></param>
+        /// <param name="results"></param>
+        /// <param name="errorKeys"></param>
+        public static void Hop(TX[] sourceValues, string edgeLabel, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results, List<Int64> errorKeys)
+        {
+            List<Int64> outKeys = new List<Int64>();
+            if (edgeLabel == null || edgeLabel == "In")
+            {
+                foreach (TX value in sourceValues)
+                {
+                    foreach (In _in in value.In)
+                    {
+                        if (!outKeys.Contains(_in.tx_index))
+                            outKeys.Add(_in.tx_index);
+                    }
+                }
+            }
+            Get(outKeys.ToArray(), header, conditionHeader, conditions, results, errorKeys);
+        }
+
+        /// <summary>
+        /// look the whole db to find the nodes who meets the condtions
+        /// </summary>
+        /// <param name="header">header filter</param>
+        /// <param name="conditionHeader"></param>
+        /// <param name="conditions"></param>
+        /// <param name="results">return results</param>
+        /// <returns></returns>
+        private static async Task HasLocal(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
             foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
             {
@@ -251,7 +286,7 @@ namespace ToyGE
             return;
         }
 
-        static async Task HasRemote(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        private static async Task HasRemote(Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
             List<UInt32> remoteIPs = new List<UInt32>();
             foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
@@ -271,7 +306,7 @@ namespace ToyGE
             return;
         }
 
-        static void HasLocalTraversal(ARTInt64Node node, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
+        private static void HasLocalTraversal(ARTInt64Node node, Header[] header, Header[] conditionHeader, TX[] conditions, List<TX> results)
         {
             if (node == null)
             {
@@ -290,7 +325,7 @@ namespace ToyGE
             HasLocalTraversal(node.rightChild, header, conditionHeader, conditions, results);
         }
 
-        static bool MeetCondition(IntPtr cellAddr, Header[] conditionHeader, TX[] conditions, out TX result)
+        private static bool MeetCondition(IntPtr cellAddr, Header[] conditionHeader, TX[] conditions, out TX result)
         {
             //result value
             result = new TX();
@@ -411,7 +446,7 @@ namespace ToyGE
         /// <param name="key">input key</param>
         /// <param name="results">return results(has value, must locked before update)</param>
         /// <param name="errorKeys">failed keys</param>
-        static void GetOneCell(IntPtr cellAddr, Header[] header, TX result, List<TX> results)
+        private static void GetOneCell(IntPtr cellAddr, Header[] header, TX result, List<TX> results)
         {
             //pay attention: results and errorKeys has data before, for multiple threads speed up
 
@@ -525,7 +560,7 @@ namespace ToyGE
         #endregion search operation
 
 
-        #region insert operation
+        #region set operation
         /// <summary>
         /// convert object to byte[] in memory
         /// </summary>
@@ -703,7 +738,7 @@ namespace ToyGE
                 }
             }
         }
-        #endregion insert operation
+        #endregion set operation
 
         #region remote response
         /// <summary>
@@ -828,7 +863,7 @@ namespace ToyGE
 
         public static void DeleteIn(ref IntPtr memAddr, IntPtr[] freeAddrs)
         {
-            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
 
             //jump status
             offsetMemAddr = offsetMemAddr + 1;
