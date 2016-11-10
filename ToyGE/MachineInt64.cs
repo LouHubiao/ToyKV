@@ -9,25 +9,31 @@ using System.Runtime.InteropServices;
 
 namespace ToyGE
 {
-    public class BlockInt64
+    public class Block
     {
-        //freelist max item is 64KB, pre offset is 64
-        const int freeCount = 1024;
+        //freelist max item is 8KB, pre offset is 8
+        //const int freeCount = 1024;
 
-        public IntPtr headAddr;
+        //block header addr
+        public IntPtr headerAddr;
+        //block tail addr
         public IntPtr tailAddr;
+        //free
         public IntPtr[] freeList;
         public int blockLength;
         public ARTInt64 index;
 
-        public BlockInt64(int blockLength)
+        /// <summary>
+        /// init the block
+        /// </summary>
+        /// <param name="length"></param>
+        public Block(int length, int maxItemLength)
         {
-            IntPtr memAddr = Marshal.AllocHGlobal(blockLength);
-
-            this.headAddr = memAddr;
+            IntPtr memAddr = Marshal.AllocHGlobal(length);
+            this.headerAddr = memAddr;
             this.tailAddr = memAddr;
-            this.freeList = new IntPtr[freeCount];
-            this.blockLength = blockLength;
+            this.freeList = new IntPtr[maxItemLength / 8];
+            this.blockLength = length;
             this.index = new ARTInt64();     //alloc blockIndex
         }
     }
@@ -36,7 +42,7 @@ namespace ToyGE
     public class MachineIndexInt64
     {
         public UInt32 machineIP;   //IP address
-        public BlockInt64 block;  //block info
+        public Block block;  //block info
     }
 
     public class MachinesInt64
@@ -87,7 +93,7 @@ namespace ToyGE
                 MachineIndexInt64 index = new MachineIndexInt64();
                 index.machineIP = machineIP;
                 if (machineIP == 0)
-                    index.block = new BlockInt64(blockSize);        //alloc block
+                    index.block = new Block(blockSize);        //alloc block
                 machineIndexs.Add(beginKey, index);
                 beginKey = (Int16)(beginKey + offset);
             }

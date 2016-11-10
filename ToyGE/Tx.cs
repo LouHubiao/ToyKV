@@ -621,8 +621,8 @@ namespace ToyGE
         private static void SetOneCell(MachineIndexInt64 machineIndex, TX value, Header[] filters, List<TX> failedValues)
         {
             //judge if has enough space for cell (space=37, get before compile)
-            BlockInt64 block = machineIndex.block;
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
+            Block block = machineIndex.block;
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headerAddr, ref block.tailAddr, block.blockLength, 37);
             if (nextFreeInBlock.ToInt64() == 0)
             {
                 lock (failedValues)
@@ -644,7 +644,7 @@ namespace ToyGE
             //insert hash(X)
             if (filters == null || ((IList)filters).Contains(Header.Hash))
             {
-                if (MemString.Set(ref nextFreeInBlock, value.Hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap) == false)
+                if (MemString.Set(ref nextFreeInBlock, value.Hash, block.freeList, block.headerAddr, ref block.tailAddr, block.blockLength, gap) == false)
                 {
                     lock (failedValues)
                     {
@@ -665,7 +665,7 @@ namespace ToyGE
             //insert ins(X)
             if (filters == null || ((IList)filters).Contains(Header.In))
             {
-                if (MemList.Set<In>(ref nextFreeInBlock, value.In, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, InHelper.Set, null) == false)
+                if (MemList.Set<In>(ref nextFreeInBlock, value.In, block.freeList, block.headerAddr, ref block.tailAddr, block.blockLength, gap, InHelper.Set, null) == false)
                 {
                     lock (failedValues)
                     {
@@ -680,7 +680,7 @@ namespace ToyGE
             //insert outs(X)
             if (filters == null || ((IList)filters).Contains(Header.Out))
             {
-                if (MemList.Set<string>(ref nextFreeInBlock, value.Out, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null) == false)
+                if (MemList.Set<string>(ref nextFreeInBlock, value.Out, block.freeList, block.headerAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null) == false)
                 {
                     lock (failedValues)
                     {
@@ -880,7 +880,7 @@ namespace ToyGE
             int result = 0;
             foreach (MachineIndexInt64 index in machines.machineIndexs.Values)
             {
-                BlockInt64 block = index.block;
+                Block block = index.block;
                 ARTInt64Node node = block.index.tree.root;
                 result += ARTTreeForeach(node, statistic);
             }
