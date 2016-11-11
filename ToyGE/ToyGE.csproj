@@ -95,6 +95,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ARTInt64.cs" />
+    <Compile Include="Block.cs" />
     <Compile Include="BTree.cs" />
     <Compile Include="Delegate.cs" />
     <Compile Include="In.cs" />
@@ -106,7 +107,6 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReqRep.cs" />
     <Compile Include="Statistic.cs" />
-    <Compile Include="TrieIndex.cs" />
     <Compile Include="Tx.cs" />
   </ItemGroup>
   <ItemGroup>

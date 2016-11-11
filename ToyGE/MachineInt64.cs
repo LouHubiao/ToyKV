@@ -18,15 +18,18 @@ namespace ToyGE
         public IntPtr headerAddr;
         //block tail addr
         public IntPtr tailAddr;
-        //free
+        //free list
         public IntPtr[] freeList;
+        //length of block
         public int blockLength;
+        //block index
         public ARTInt64 index;
 
         /// <summary>
-        /// init the block
+        /// init the block from memory
         /// </summary>
-        /// <param name="length"></param>
+        /// <param name="length">The block length.</param>
+        /// <param name="maxItemLength">Maximum length of the item.</param>
         public Block(int length, int maxItemLength)
         {
             IntPtr memAddr = Marshal.AllocHGlobal(length);
@@ -34,7 +37,7 @@ namespace ToyGE
             this.tailAddr = memAddr;
             this.freeList = new IntPtr[maxItemLength / 8];
             this.blockLength = length;
-            this.index = new ARTInt64();     //alloc blockIndex
+            this.index = new ARTInt64();
         }
     }
 

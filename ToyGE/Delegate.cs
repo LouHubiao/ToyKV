@@ -13,7 +13,7 @@ namespace ToyGE
 
         public delegate K GetItem(ref IntPtr memAddr);
         public delegate bool InsertItem_Object(ref IntPtr memAddr, K input, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap);
-        public delegate bool InsertItem_Value(ref IntPtr memAddr, K input);
+        public delegate void InsertItem_Value(ref IntPtr memAddr, K input);
         public delegate bool DeleteItem_Object(ref IntPtr memAddr, IntPtr[] freeList);
         public delegate bool Statistic(IntPtr memAddr);
     }

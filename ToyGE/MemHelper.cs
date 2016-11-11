@@ -4,29 +4,31 @@ using System.Text;
 using System.Runtime.InteropServices;
 
 /*
-memory struct:
-    string: status(8)| fullLength(16)| Body| [CurLength(16)]| [NextOffset(32)]|
-    list:   status(8)| fullLength(16)| Body| [CurLength(16)]| [NextOffset(32)]|
-    struct: status(8)| Body|
-
-status:
-    string: hasNext| isFull| ...
-    list:   hasNext| isFull| ...
-    struct: ...
-
-ps:
-1.fullLength is the length of Body, curLength is the length of content
-2.use pointer if not value type
-
-this file contains memory operate functions with different structures
-*/
+ * this file contains memory operate functions with different structures
+ * 
+ * now support: Byte, Int16, Int32, Int64, String, List, Struct
+ * 
+ * memory object struct:
+ *  string: status(8)| fullLength(16)| Body| [CurLength(16)]| [NextOffset(32)]|
+ *  list:   status(8)| fullLength(16)| Body| [CurLength(16)]| [NextOffset(32)]|
+ *  struct: status(8)| Body|
+ *  
+ * status:
+ *  string: hasNext| isFull| ...
+ *  list:   hasNext| isFull| ...
+ *  struct: ...
+ *  
+ * ps:
+ *  1.fullLength is the length of Body, curLength is the length of content
+ *  2.use pointer if not value type
+ */
 
 namespace ToyGE
 {
     /// <summary>
     /// the usual tool about memory management of different structure
     /// </summary>
-    class MemTool
+    public class MemTool
     {
         /// <summary>
         /// Get next address by offset, result = memAddr + sizeof(offset) + *(memAddr)
@@ -197,7 +199,7 @@ namespace ToyGE
     }
 
     //byte operation
-    class MemByte
+    public class MemByte
     {
         public static unsafe byte Get(ref IntPtr memAddr)
         {
@@ -219,7 +221,7 @@ namespace ToyGE
     }
 
     //int16 operation
-    class MemInt16
+    public class MemInt16
     {
         public static unsafe Int16 Get(ref IntPtr memAddr)
         {
@@ -241,7 +243,7 @@ namespace ToyGE
     }
 
     //int32 operation
-    class MemInt32
+    public class MemInt32
     {
         public static unsafe Int32 Get(ref IntPtr memAddr)
         {
@@ -263,7 +265,7 @@ namespace ToyGE
     }
 
     //int64 operation
-    class MemInt64
+    public class MemInt64
     {
         public static unsafe Int64 Get(ref IntPtr memAddr)
         {
@@ -285,7 +287,7 @@ namespace ToyGE
     }
 
     //status operation
-    class MemStatus
+    public class MemStatus
     {
         /// <summary>
         /// return true if memory part has next content
@@ -347,7 +349,7 @@ namespace ToyGE
     }
 
     //string operation
-    class MemString
+    public class MemString
     {
         /// <summary>
         /// get entire string
@@ -596,7 +598,7 @@ namespace ToyGE
     }
 
     //list operation
-    class MemList
+    public class MemList
     {
         /// <summary>
         /// get entire list, getItem like GetString()
@@ -694,8 +696,7 @@ namespace ToyGE
             {
                 for (int i = 0; i < source.Count; i++)
                 {
-                    if (insertItem_Value(ref listAddr, source[i]) == false)
-                        return false;
+                    insertItem_Value(ref listAddr, source[i]);
                 }
             }
             else
@@ -718,7 +719,7 @@ namespace ToyGE
         }
 
         /// <summary>
-        /// deelte list content, return false if failed
+        /// delete list content, return false if failed
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="memAddr"></param>
@@ -792,7 +793,7 @@ namespace ToyGE
         /// <param name="insertItem_Object"></param>
         /// <param name="insertItem_Value"></param>
         /// <returns></returns>
-        public unsafe static bool Add<T>(IntPtr memAddr, T item, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 defaultGap, Delegate<T>.InsertItem_Object insertItem_Object, Delegate<T>.InsertItem_Value insertItem_Value)
+        public static bool Add<T>(IntPtr memAddr, T item, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 defaultGap, Delegate<T>.InsertItem_Object insertItem_Object, Delegate<T>.InsertItem_Value insertItem_Value)
         {
             //get offseted addr
             IntPtr listAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
@@ -838,8 +839,7 @@ namespace ToyGE
                 //insert item
                 if (typeof(T).IsValueType)
                 {
-                    if (insertItem_Value(ref insertAddr, item) == false)
-                        return false;
+                    insertItem_Value(ref insertAddr, item);
                     MemInt16.Set(ref curLengthAddr, (Int16)(insertAddr.ToInt64() - listAddr.ToInt64()));
                 }
                 else
@@ -926,16 +926,10 @@ namespace ToyGE
 
             return true;
         }
-
-        ////remove an item by index from list
-        //public static unsafe void Jump(ref IntPtr memAddr)
-        //{
-        //    memAddr += sizeof(Int32);
-        //}
     }
 
     //free memory operation
-    class MemFreeList
+    public class MemFreeList
     {
         //temp, log free list
         public static void ConsoleFree(IntPtr[] freeAdds)
@@ -1011,5 +1005,39 @@ namespace ToyGE
                 return new IntPtr(0);
             }
         }
+    }
+
+    //user defined structure operation
+    public interface MemStructure
+    {
+        /// <summary>
+        /// Gets structure
+        /// </summary>
+        /// <param name="memAddr">The memory addr.</param>
+        /// <param name="headerIndex">Index of the header.</param>
+        /// <returns>MemStructure.</returns>
+        MemStructure Get(ref IntPtr memAddr, int[] headerIndex);
+
+        /// <summary>
+        /// insert structure
+        /// </summary>
+        /// <param name="memAddr">The memory addr.</param>
+        /// <param name="source">The source.</param>
+        /// <param name="headerIndex">Index of the header.</param>
+        /// <param name="freeList">The free list.</param>
+        /// <param name="headAddr">The head addr.</param>
+        /// <param name="tailAddr">The tail addr.</param>
+        /// <param name="blockLength">Length of the block.</param>
+        /// <returns><c>true</c> if XXXX, <c>false</c> otherwise.</returns>
+        bool Set(ref IntPtr memAddr, MemStructure source, int[] headerIndex, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr,
+            Int32 blockLength);
+
+        /// <summary>
+        /// Deletes structure
+        /// </summary>
+        /// <param name="memAddr">The memory addr.</param>
+        /// <param name="freeList">The free list.</param>
+        /// <returns><c>true</c> if XXXX, <c>false</c> otherwise.</returns>
+        bool Delete(ref IntPtr memAddr, IntPtr[] freeList);
     }
 }
