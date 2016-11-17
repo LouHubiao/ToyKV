@@ -19,6 +19,14 @@ namespace ToyGE
         /// </summary>
         /// <param name="key">The key.</param>
         /// <param name="value">The value.</param>
-        void Insert(K key, IntPtr value);
+        bool Insert(K key, IntPtr value);
+
+        /// <summary>
+        /// Delete value by key
+        /// </summary>
+        /// <typeparam name="K"></typeparam>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        bool Delete(K key);
     }
 }

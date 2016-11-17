@@ -67,7 +67,7 @@ namespace ToyGE
         /// </summary>
         /// <param name="key">The key.</param>
         /// <param name="value">The value.</param>
-        public void Insert(K key, IntPtr value)
+        public bool Insert(K key, IntPtr value)
         {
             //new right child
             NewValueInNode<K> newRightNode;
@@ -91,6 +91,19 @@ namespace ToyGE
                 _root.kids.Add(rootBackup);
                 _root.kids.Add(newRightNode.node);
             }
+
+            return true;
+        }
+
+        /// <summary>
+        /// delete node from tree, not finished
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        public bool Delete(K key)
+        {
+            //not delete in real
+            return true;
         }
 
         /// <summary>

@@ -11,10 +11,14 @@ namespace ToyGE
     {
         public delegate int CompareT(K t1, K t2);
 
-        public delegate K GetItem(ref IntPtr memAddr);
-        public delegate bool InsertItem_Object(ref IntPtr memAddr, K input, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap);
-        public delegate void InsertItem_Value(ref IntPtr memAddr, K input);
-        public delegate bool DeleteItem_Object(ref IntPtr memAddr, IntPtr[] freeList);
+        /// <summary>
+        /// get item in list
+        /// </summary>
+        /// <param name="memAddr"></param>
+        /// <returns></returns>
+        public delegate K GetItem_Structure(ref IntPtr memAddr);
+        public delegate bool InsertItem_Structure(ref IntPtr memAddr, K input);
+        public delegate bool DeleteItem_Structure(ref IntPtr memAddr);
         public delegate bool Statistic(IntPtr memAddr);
     }
 
