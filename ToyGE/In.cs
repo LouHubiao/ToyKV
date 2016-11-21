@@ -5,78 +5,104 @@ using System.Text;
 using System.Threading.Tasks;
 
 using Newtonsoft.Json;
+using System.Collections;
 
 namespace ToyGE
 {
-    public class In:IComparable
+    public class In : Structure
     {
+        public new int Length = 13;
+
         [JsonProperty("addr")]
-        public string addr;
+        public string Addr;
 
         [JsonProperty("tx_index")]
-        public Int64 tx_index;
+        public Int64 Tx_index;
 
-        public int CompareTo(object obj)
+        //IComparable
+        public override int CompareTo(object obj)
         {
             In another = obj as In;
-            if (this.addr == another.addr && this.tx_index == another.tx_index)
+            if (this.Addr == another.Addr && this.Tx_index == another.Tx_index)
                 return 0;
             else
-                return this.addr.CompareTo(another.addr);
+                return this.Addr.CompareTo(another.Addr);
         }
     }
 
-    public class InHelper
+    public class InHelper : StructureHelper
     {
-        /// <summary>
-        /// get struct part [In] of object
-        /// </summary>
-        /// <param name="structAddr">part begin address</param>
-        /// <returns>struct part object</returns>
-        public static In Get(ref IntPtr structAddr)
+        public enum Header
+        {
+            Addr = 1,
+            Tx_index = 2
+        }
+
+        public Structure Get(IntPtr memAddr, int[] headerIndexs = null)
         {
             In result = new In();
 
-            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref structAddr);
+            byte status = MemByte.Get(ref memAddr);
 
-            byte status = MemByte.Get(ref offsetMemAddr);
+            if (headerIndexs == null || ((IList)headerIndexs).Contains(Header.Addr))
+            {
+                IntPtr AddrAddr = MemTool.GetAddrByOffsetAddr(memAddr);
+                result.Addr = MemString.Get(AddrAddr);
+                MemInt32.Jump(ref memAddr);
+            }
+            else
+                MemInt32.Jump(ref memAddr);
 
-            result.addr = MemString.Get(ref offsetMemAddr);
-
-            result.tx_index = MemInt64.Get(ref offsetMemAddr);
+            if (headerIndexs == null || ((IList)headerIndexs).Contains(Header.Tx_index))
+            {
+                result.Tx_index = MemInt64.Get(ref memAddr);
+            }
+            else
+                MemInt64.Jump(ref memAddr);
 
             return result;
         }
 
-        /// <summary>
-        /// set struct part [In] of object, need many paras which get by cell set, must follow by cell set
-        /// </summary>
-        /// <param name="memAddr">next Free In Block</param>
-        /// <param name="value">insert object</param>
-        /// <param name="freeList">freelist of different size space</param>
-        /// <param name="headAddr">block head addr</param>
-        /// <param name="tailAddr">cur tail addr</param>
-        /// <param name="blockLength">block size</param>
-        /// <param name="gap"></param>
-        /// <returns></returns>
-        public static bool Set(ref IntPtr memAddr, In value, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap)
+        public bool Set(IntPtr memAddr, Structure source, Block block, int[] headerIndexs = null)
         {
-            //judge if has enough space for struct (space=13, get before compile)
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(freeList, headAddr, ref tailAddr, blockLength, 13);
-            if (nextFreeInBlock.ToInt64() == 0)
-                return false;   //set false
-
-            //insert pointer
-            MemInt32.Set(ref memAddr, (Int32)(nextFreeInBlock.ToInt64() - memAddr.ToInt64() - sizeof(Int32)));
+            In value = source as In;
 
             //insert inStatus
-            MemByte.Set(ref nextFreeInBlock, (byte)0);
+            MemByte.Set(ref memAddr, (byte)0);
 
             //insert in_addr
-            MemString.Set(ref nextFreeInBlock, value.addr, freeList, headAddr, ref tailAddr, blockLength, gap);
+            if (headerIndexs == null || ((IList)headerIndexs).Contains(Header.Addr))
+            {
+                IntPtr newAddr = IntPtr.Zero;
+                if (block.GetNewSpace(ref memAddr, value.Addr.Length, out newAddr) == false)
+                    return false;
+                MemString.Set(newAddr, value.Addr, block);
+            }
+            else
+                MemInt32.Jump(ref memAddr);
 
             //insert tx_index
-            MemInt64.Set(ref nextFreeInBlock, value.tx_index);
+            if (headerIndexs == null || ((IList)headerIndexs).Contains(Header.Tx_index))
+                MemInt64.Set(ref memAddr, value.Tx_index);
+            else
+                MemInt64.Jump(ref memAddr);
+
+            return true;
+        }
+
+        public bool Delete(IntPtr memAddr, Block block)
+        {
+            //backup memAddr 
+            IntPtr memAddrBackup = memAddr;
+
+            //get status
+            byte status = MemByte.Get(ref memAddr);
+
+            if (MemString.Delete(memAddr, block) == false)
+                return false;   
+            MemInt32.Jump(ref memAddr);
+
+            block.InsertFree(memAddrBackup, 13);
 
             return true;
         }

@@ -35,134 +35,73 @@ namespace ToyGE
         /// </summary>
         /// <param name="memAddr">Addr Before Offset</param>
         /// <returns>offseted address</returns>
-        public static unsafe IntPtr GetAddrByAddrBeforeOffset(ref IntPtr memAddr)
+        public static unsafe IntPtr GetAddrByOffsetAddr(IntPtr memAddr)
         {
             Int32 offset = MemInt32.Get(ref memAddr);
             //memAddrBeforeOffset has been changed
             return memAddr + offset;
         }
 
-        /// <summary>
-        /// get the curLengthAddr, result = memAddr + fullLength
-        /// </summary>
-        /// <param name="memAddr"></param>
-        /// <param name="fullLength"></param>
-        /// <returns></returns>
+        // get the curLengthAddr, result = memAddr + fullLength
         public static unsafe IntPtr GetCurLengthAddr(IntPtr memAddr, Int16 fullLength)
         {
             return memAddr + fullLength;
         }
 
-        /// <summary>
-        /// get the curLength value, result = *(memAddr + fullLength)
-        /// </summary>
-        /// <param name="memAddr">memAddr after fullLength</param>
-        /// <param name="fullLength"></param>
-        /// <returns></returns>
+        // get the curLength value, result = *(memAddr + fullLength)
         public static unsafe Int16 GetCurLength(IntPtr memAddr, Int16 fullLength)
         {
             IntPtr curLengthAddr = memAddr + fullLength;
             return MemInt16.Get(ref curLengthAddr);
         }
 
-        /// <summary>
-        /// set the curLength value, *(memAddr + fullLength) = curLength
-        /// </summary>
-        /// <param name="memAddr">memAddr after fullLength</param>
-        /// <param name="fullLength"></param>
-        /// <param name="curLength"></param>
+        // set the curLength value, *(memAddr + fullLength) = curLength
         public static unsafe void SetCurLength(IntPtr memAddr, Int16 fullLength, Int16 curLength)
         {
             IntPtr curLengthAddr = memAddr + fullLength;
             MemInt16.Set(ref curLengthAddr, curLength);
         }
 
-        /// <summary>
-        /// get nextOffset addr, result = memAddr + fullLength + sizeof(curLength)
-        /// </summary>
-        /// <param name="memAddr">memAddr after fullLength</param>
-        /// <param name="fullLength"></param>
-        /// <returns></returns>
+        // get nextOffset addr, result = memAddr + fullLength + sizeof(curLength)
         public static unsafe IntPtr GetNextOffsetAddr(IntPtr memAddr, Int16 fullLength)
         {
             return memAddr + fullLength + sizeof(Int16);
         }
 
-        /// <summary>
-        /// get the nextOffset value, result = *(memAddr + fullLength + sizeof(curLength))
-        /// </summary>
-        /// <param name="memAddr">memAddr after fullLength</param>
-        /// <param name="fullLength"></param>
-        /// <returns></returns>
+        // get the nextOffset value, result = *(memAddr + fullLength + sizeof(curLength))
         public static unsafe Int32 GetNextOffset(IntPtr memAddr, Int16 fullLength)
         {
             IntPtr nextOffsetAddr = memAddr + fullLength + sizeof(Int16);
             return MemInt32.Get(ref nextOffsetAddr);
         }
 
-        /// <summary>
-        /// set the nextOffset value, *(memAddr + fullLength + sizeof(curLength)) = curLength
-        /// </summary>
-        /// <param name="memAddr">memAddr after fullLength</param>
-        /// <param name="fullLength">fullLength</param>
-        /// <param name="nextOffset"></param>
+        // set the nextOffset value, *(memAddr + fullLength + sizeof(curLength)) = curLength
         public static unsafe void SetNextOffset(IntPtr memAddr, Int16 fullLength, Int32 nextOffset)
         {
             IntPtr nextOffsetAddr = memAddr + fullLength + sizeof(Int16);
             MemInt32.Set(ref nextOffsetAddr, nextOffset);
         }
 
-        /// <summary>
-        /// jump interval
-        /// </summary>
-        /// <param name="memAddr"></param>
-        /// <param name="interval"></param>
-        public static unsafe void addrJump(ref IntPtr memAddr, int interval)
-        {
-            memAddr += interval;
-        }
-
-        /// <summary>
-        /// get the fullLength for string and list, reuslt = (count + gap) * sizeof(T)
-        /// </summary>
-        /// <param name="count"></param>
-        /// <param name="gap"></param>
-        /// <returns></returns>
-        public static unsafe Int16 GetFullLength(int count, Int16 gap, int sizeofT)
+        // get the fullLength for string and list, reuslt = (count + gap) * sizeof(T)
+        public static unsafe Int16 GetFullLengthWithCount(int count, Int16 gap, int sizeofT)
         {
             return (Int16)((count + gap) * sizeofT);
         }
 
-        /// <summary>
-        /// get the total memory length for string or list, result = sizeof(status)+sizeof(fullLength) + fullLength + sizeof(curLength) + sizeof(nextOffset)
-        /// </summary>
-        /// <param name="count">The count.</param>
-        /// <param name="gap">The gap.</param>
-        /// <param name="sizeofT">The sizeof t.</param>
-        /// <returns>System.Int32.</returns>
-        public static unsafe int GetTotalMemlengthByCount(int count, Int16 gap, int sizeofT)
+        // get the total memory length for string or list, result = sizeof(status)+sizeof(fullLength) + fullLength + sizeof(curLength) + sizeof(nextOffset)
+        public static unsafe int GetObjectTotalLengthWithCount(int count, Int16 gap, int sizeofT)
         {
-            int result = sizeof(Byte) + sizeof(Int16);
-            Int16 fullLength = GetFullLength(count, gap, sizeofT);
-            result += fullLength + sizeof(Int16) + sizeof(Int32);
-            return fullLength;
+            Int16 fullLength = GetFullLengthWithCount(count, gap, sizeofT);
+            return GetObjectTotalLength(fullLength);
         }
 
-        /// <summary>
-        /// get the total memory length for string and list, result = sizeof(byte) + sizeof(Int16) + fullLength + sizeof(Int16) + sizeof(Int32)
-        /// </summary>
-        /// <param name="fullLength">fullLength in string or list</param>
-        /// <returns></returns>
-        public static unsafe int GetToalMemLengthbyFullLength(Int16 fullLength)
+        // get the total memory length for object, result = sizeof(byte) + sizeof(Int16) + fullLength + sizeof(Int16) + sizeof(Int32)
+        public static unsafe int GetObjectTotalLength(Int16 fullLength)
         {
-            return sizeof(byte) + sizeof(Int16) + fullLength + sizeof(Int16) + sizeof(Int32);
+            return sizeof(Byte) + sizeof(Int16) + fullLength + sizeof(Int16) + sizeof(Int32);
         }
 
-        /// <summary>
-        /// get the value size of T
-        /// </summary>
-        /// <param name="t"></param>
-        /// <returns></returns>
+        // get the value size of T
         public static int GetValueTypeSize(Type t)
         {
             if (t == typeof(byte))
@@ -390,18 +329,15 @@ namespace ToyGE
         /// </summary>
         /// <param name="memAddr">The memory addr.</param>
         /// <returns>System.String.</returns>
-        public static string Get(ref IntPtr memAddr)
+        public static string Get(IntPtr memAddr)
         {
             StringBuilder result = new StringBuilder();
 
-            //get string values begin addr
-            IntPtr stringAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
-
             //get status
-            byte status = MemByte.Get(ref stringAddr);
+            byte status = MemByte.Get(ref memAddr);
 
             //get fullLength
-            Int16 fullLength = MemInt16.Get(ref stringAddr);
+            Int16 fullLength = MemInt16.Get(ref memAddr);
 
             //get lastAddr/nextOffsetAddr
             Int16 contentLength;
@@ -411,21 +347,22 @@ namespace ToyGE
             else if (MemStatus.GetHasNext(status) == true)
             {
                 contentLength = fullLength;
-                nextOffsetAddr = MemTool.GetNextOffsetAddr(stringAddr, fullLength);
+                nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
             }
             else
             {
                 //not full
-                contentLength = MemTool.GetCurLength(stringAddr, fullLength);
+                contentLength = MemTool.GetCurLength(memAddr, fullLength);
             }
 
             //add string into result
-            result.Append(MemTool.GetChars(stringAddr, contentLength));
+            result.Append(MemTool.GetChars(memAddr, contentLength));
 
             //recursion next part string
             if (MemStatus.GetHasNext(status) == true)
             {
-                result.Append(MemString.Get(ref nextOffsetAddr));
+                IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+                result.Append(Get(newAddr));
             }
 
             return result.ToString();
@@ -438,28 +375,123 @@ namespace ToyGE
         /// <param name="source">The source.</param>
         /// <param name="defaultGap">The default gap.</param>
         /// <returns><c>true</c> if XXXX, <c>false</c> otherwise.</returns>
-        public static bool Set(ref IntPtr memAddr, string source, Int16 defaultGap)
+        public static bool Set(IntPtr memAddr, string source, Block block)
         {
             //get the length of T
             int sizeofT = sizeof(byte);
 
             //insert status
-            if (defaultGap != 0)
+            if (block.defaultGap != 0)
                 MemByte.Set(ref memAddr, (byte)0x00);
             else
                 MemByte.Set(ref memAddr, (byte)0x20);
 
             //insert length with gap
-            Int16 fullLength = MemTool.GetFullLength(source.Length, defaultGap, sizeofT);
+            Int16 fullLength = MemTool.GetFullLengthWithCount(source.Length, block.defaultGap, sizeofT);
             MemInt16.Set(ref memAddr, fullLength);
 
             //insert string content
             MemTool.SetChars(memAddr, source, source.Length);
 
             //set curLength
-            if (defaultGap != 0)
+            if (block.defaultGap != 0)
             {
-                MemTool.SetCurLength(memAddr, fullLength, (Int16) source.Length);
+                MemTool.SetCurLength(memAddr, fullLength, (Int16)source.Length);
+            }
+
+            return true;
+        }
+
+        public static bool Delete(IntPtr memAddr, Block block)
+        {
+            //backup offsetMemAddr as free begin addr
+            IntPtr stringAddrBackup = memAddr;
+
+            //get status
+            byte status = MemByte.Get(ref memAddr);
+
+            //get fullLength
+            Int16 fullLength = MemInt16.Get(ref memAddr);
+
+            //get nextOffsetAddr
+            IntPtr nextOffsetAddr = IntPtr.Zero;
+            if (MemStatus.GetHasNext(status) == true)
+            {
+                nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+            }
+
+            //insert content into freeAddr
+            int totalMemLength = MemTool.GetObjectTotalLength(fullLength);
+            block.InsertFree(stringAddrBackup, totalMemLength);
+
+            //recursion delete
+            if (MemStatus.GetHasNext(status) == true)
+            {
+                IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+                return Delete(newAddr, block);
+            }
+
+            return true;
+        }
+
+        public static bool Update(IntPtr memAddr, string value, Block block)
+        {
+            //get status
+            IntPtr statusAddr = memAddr;
+            byte status = MemByte.Get(ref memAddr);
+            bool hasNext = MemStatus.GetHasNext(status);
+
+            //get fullLength
+            Int16 fullLength = MemInt16.Get(ref memAddr);
+
+            //set status and get set length
+            int setLength;
+            if (value.Length > fullLength)
+            {
+                MemStatus.SetIsFull(statusAddr, true);
+                MemStatus.SetHasNext(statusAddr, true);
+                setLength = fullLength;
+            }
+            else if (value.Length == fullLength)
+            {
+                MemStatus.SetIsFull(statusAddr, true);
+                MemStatus.SetHasNext(statusAddr, false);
+                setLength = fullLength;
+            }
+            else
+            {
+                MemStatus.SetIsFull(statusAddr, false);
+                MemStatus.SetHasNext(statusAddr, false);
+                setLength = value.Length;
+            }
+
+            //set chars
+            MemTool.SetChars(memAddr, value, setLength);
+
+            if (value.Length > fullLength)
+            {
+                //get rest string
+                string nextValue = value.Substring(fullLength);
+
+                //get nextOffset addr
+                IntPtr nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+                IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+
+                //recursion update/set
+                if (hasNext == true)
+                    return Update(newAddr, nextValue, block);
+                else
+                    Set(newAddr, nextValue, block);
+            }
+            else
+            {
+                //get nextOffset addr
+                IntPtr nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+                IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+
+                //remove next part
+                if (hasNext == true)
+                    return Delete(newAddr, block);
             }
 
             return true;
@@ -476,57 +508,63 @@ namespace ToyGE
         /// <param name="memAddr"></param>
         /// <param name="getItem"></param>
         /// <returns></returns>
-        public static List<T> Get<T>(ref IntPtr memAddr, Delegate<T>.GetItem_Structure getItem_Structure = null)
+        public static List<T> Get<T>(IntPtr memAddr, StructureHelper structureHelper = null)
         {
             List<T> result = new List<T>();
 
-            //get list values begin addr
-            IntPtr ListAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
-
             //get status
-            byte status = MemByte.Get(ref ListAddr);
+            byte status = MemByte.Get(ref memAddr);
 
             //get length
-            Int16 fullLength = MemInt16.Get(ref ListAddr);
+            Int16 fullLength = MemInt16.Get(ref memAddr);
 
             //get lastAddr/nextOffsetAddr
             IntPtr lastAddr;
             IntPtr nextOffsetAddr = IntPtr.Zero;
             if (MemStatus.GetIsFull(status) == true)
-                lastAddr = ListAddr + fullLength;
+                lastAddr = memAddr + fullLength;
             else if (MemStatus.GetHasNext(status) == true)
             {
-                lastAddr = ListAddr + fullLength;
-                nextOffsetAddr = MemTool.GetNextOffsetAddr(ListAddr, fullLength);
+                lastAddr = memAddr + fullLength;
+                nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
             }
             else
             {
                 //not full
-                Int16 curLength = MemTool.GetCurLength(ListAddr, fullLength);
-                lastAddr = ListAddr + curLength;
+                Int16 curLength = MemTool.GetCurLength(memAddr, fullLength);
+                lastAddr = memAddr + curLength;
             }
 
             //add item into list
-            while (ListAddr.ToInt64() < lastAddr.ToInt64())
+            while (memAddr.ToInt64() < lastAddr.ToInt64())
             {
                 if (typeof(T) == typeof(byte))
-                    (result as List<byte>).Add(MemByte.Get(ref ListAddr));
+                    (result as List<byte>).Add(MemByte.Get(ref memAddr));
                 else if (typeof(T) == typeof(Int16))
-                    (result as List<Int16>).Add(MemInt16.Get(ref ListAddr));
+                    (result as List<Int16>).Add(MemInt16.Get(ref memAddr));
                 else if (typeof(T) == typeof(Int32))
-                    (result as List<Int32>).Add(MemInt32.Get(ref ListAddr));
+                    (result as List<Int32>).Add(MemInt32.Get(ref memAddr));
                 else if (typeof(T) == typeof(Int64))
-                    (result as List<Int64>).Add(MemInt64.Get(ref ListAddr));
+                    (result as List<Int64>).Add(MemInt64.Get(ref memAddr));
                 else if (typeof(T) == typeof(String))
-                    (result as List<String>).Add(MemString.Get(ref ListAddr));
+                {
+                    IntPtr newAddr = MemTool.GetAddrByOffsetAddr(memAddr);
+                    MemInt32.Jump(ref memAddr);
+                    (result as List<String>).Add(MemString.Get(newAddr));
+                }
                 else
-                    result.Add(getItem_Structure(ref ListAddr));
+                {
+                    IntPtr newAddr = MemTool.GetAddrByOffsetAddr(memAddr);
+                    MemInt32.Jump(ref memAddr);
+                    (result as List<Structure>).Add(structureHelper.Get(newAddr));
+                }
             }
 
             //recursion next part list
             if (MemStatus.GetHasNext(status) == true)
             {
-                result.AddRange(MemList.Get<T>(ref nextOffsetAddr, getItem_Structure));
+                IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+                result.AddRange(Get<T>(newAddr, structureHelper));
             }
 
             return result;
@@ -546,19 +584,19 @@ namespace ToyGE
         /// <param name="insertItem_Object"></param>
         /// <param name="insertItem_Value"></param>
         /// <returns></returns>
-        public static bool Set<T>(ref IntPtr memAddr, List<T> source, Int16 defaultGap, Delegate<T>.InsertItem_Structure insertItem_Structure)
+        public static bool Set<T>(IntPtr memAddr, List<T> source, Block block, StructureHelper structureHelper = null)
         {
             //get the length of T
             int sizeofT = typeof(T).IsValueType ? MemTool.GetValueTypeSize(typeof(T)) : sizeof(Int32);
 
             //insert status
-            if (defaultGap != 0)
+            if (block.defaultGap != 0)
                 MemByte.Set(ref memAddr, (byte)0x00);
             else
                 MemByte.Set(ref memAddr, (byte)0x20);
 
             //insert length with gap
-            Int16 fullLength = MemTool.GetFullLength(source.Count, defaultGap, sizeofT);
+            Int16 fullLength = MemTool.GetFullLengthWithCount(source.Count, block.defaultGap, sizeofT);
             MemInt16.Set(ref memAddr, fullLength);
 
             //backup nextFreeInBlock
@@ -576,13 +614,23 @@ namespace ToyGE
                 else if (typeof(T) == typeof(Int64))
                     MemInt64.Set(ref memAddr, (source as List<Int64>)[i]);
                 else if (typeof(T) == typeof(String))
-                    MemString.Set(ref memAddr, (source as List<String>)[i], defaultGap);
+                {
+                    IntPtr newAddr = IntPtr.Zero;
+                    if (block.GetNewSpace(ref memAddr, (source[i] as string).Length, out newAddr) == false)
+                        return false;
+                    MemString.Set(newAddr, (source[i] as string), block);
+                }
                 else
-                    insertItem_Structure(ref memAddr, source[i]);
+                {
+                    IntPtr newAddr = IntPtr.Zero;
+                    if (block.GetNewSpace(ref memAddr, (source[i] as string).Length, out newAddr) == false)
+                        return false;
+                    structureHelper.Set(memAddr, (source[i] as Structure), block);
+                }
             }
 
             //insert curLength
-            if (defaultGap != 0)
+            if (block.defaultGap != 0)
             {
                 Int16 curLength = (Int16)(memAddr.ToInt64() - listAddrBackup.ToInt64());
                 MemTool.SetCurLength(listAddrBackup, fullLength, curLength);
@@ -590,84 +638,225 @@ namespace ToyGE
 
             return true;
         }
-    }
 
-    //free memory operation
-    public class MemFreeList
-    {
-        //temp, log free list
-        public static void ConsoleFree(IntPtr[] freeAdds)
+        public static bool Delete<T>(IntPtr memAddr, Block block, StructureHelper structureHelper = null)
         {
-            for (int i = 0; i < freeAdds.Length; i++)
+            //backup offsetMemAddr as free begin addr 
+            IntPtr listAddrBackup = memAddr;
+
+            //get status
+            byte status = MemByte.Get(ref memAddr);
+
+            //get fullLength
+            Int16 fullLength = MemInt16.Get(ref memAddr);
+
+            //get lastAddr/nextOffsetAddr
+            IntPtr lastAddr;
+            IntPtr nextOffsetAddr = IntPtr.Zero;
+            if (MemStatus.GetIsFull(status) == true)
+                lastAddr = memAddr + fullLength;
+            else
             {
-                IntPtr first = freeAdds[i];
-                if (first.ToInt64() != 0)
+                //not full
+                Int16 curLength = MemTool.GetCurLength(memAddr, fullLength);
+                lastAddr = memAddr + curLength;
+            }
+
+            if (MemStatus.GetHasNext(status) == true)
+                nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+
+            //delete items
+            if (typeof(T) == typeof(String))
+            {
+                while (memAddr.ToInt64() < lastAddr.ToInt64())
                 {
-                    IntPtr curAddr = first;
-                    while (curAddr.ToInt64() != 0)
-                    {
-                        Console.WriteLine("Line:" + i + ",addr:" + curAddr);
-                        IntPtr nextAddr = new IntPtr(MemInt64.Get(ref curAddr));
-                        curAddr = nextAddr;
-                    }
+                    if (MemString.Delete(memAddr, block) == false)
+                        return false;
                 }
-            }
-        }
-
-        /// <summary>
-        /// insert memAddr part into freeList linedlist with length
-        /// </summary>
-        /// <param name="memAddr"></param>
-        /// <param name="length"></param>
-        /// <param name="freeList"></param>
-        public static unsafe void InsertFreeList(IntPtr memAddr, int length, IntPtr[] freeList)
-        {
-            //get index in freeList, 8byte is length of pointer
-            int index = length / 8;
-
-            //back up memAddr
-            IntPtr memAddrBackup = memAddr;
-
-            //add into freelist
-            MemInt64.Set(ref memAddr, freeList[index].ToInt64());
-            freeList[index] = memAddrBackup;
-        }
-
-        /// <summary>
-        /// get free space from current free list or memory block, return 0 if has not enough space
-        /// </summary>
-        /// <param name="freeList"></param>
-        /// <param name="headAddr"></param>
-        /// <param name="tailAddr"></param>
-        /// <param name="blockLength"></param>
-        /// <param name="memLength"></param>
-        /// <returns></returns>
-        public static unsafe IntPtr GetFreeInBlock(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, int memLength)
-        {
-            //get index in freeList, 8byte is length of pointer
-            int index = (memLength + 7) / 8;
-
-            if (index > 0 && index < freeList.Length && freeList[index].ToInt64() != 0)
-            {
-                //get the 
-                IntPtr memAddr = freeList[index];
-                IntPtr memAddrBackup = memAddr;
-                //update freeList
-                freeList[index] = new IntPtr(MemInt64.Get(ref memAddrBackup));
-                return memAddr;
-            }
-            else if (headAddr.ToInt64() + blockLength - tailAddr.ToInt64() > memLength)
-            {
-                //update tailLength
-                IntPtr tailAddrCopy = tailAddr;
-                tailAddr += memLength;
-                return tailAddrCopy;
             }
             else
             {
-                //no enough space in this block
-                return new IntPtr(0);
+                while (memAddr.ToInt64() < lastAddr.ToInt64())
+                {
+                    if (structureHelper.Delete(memAddr, block) == false)
+                        return false;
+                }
             }
+
+            //insert content into freeAddr
+            int totalMemLength = MemTool.GetObjectTotalLength(fullLength);
+            block.InsertFree(listAddrBackup, totalMemLength);
+
+            //recursion delete
+            if (MemStatus.GetHasNext(status) == true)
+            {
+                return Delete<T>(nextOffsetAddr, block, structureHelper);
+            }
+
+            return true;
         }
+
+        public static bool Add<T>(IntPtr memAddr, T item, Block block, StructureHelper structureHelper = null)
+        {
+            //get status
+            IntPtr statusAddr = memAddr;
+            byte status = MemByte.Get(ref memAddr);
+
+            //get list byteLength
+            Int16 fullLength = MemInt16.Get(ref memAddr);
+
+            //add content
+            if (MemStatus.GetIsFull(status) == true)
+            {
+                if (MemStatus.GetHasNext(status) == true)
+                {
+                    //get addr to recursion
+                    IntPtr nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+                    IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+
+                    return Add<T>(newAddr, item, block, structureHelper);
+                }
+                else
+                {
+                    //update status hasNext
+                    MemStatus.SetHasNext(statusAddr, true);
+
+                    //get addr to insert new list
+                    IntPtr nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+                    IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+
+                    //generate new list<T> source
+                    List<T> inputs = new List<T>() { item };
+
+                    //insert new list into nextOffset
+                    return Set<T>(newAddr, inputs, block, structureHelper);
+                }
+            }
+            else
+            {
+                IntPtr curLengthAddr = MemTool.GetCurLengthAddr(memAddr, fullLength);
+                Int16 curLength = MemTool.GetCurLength(memAddr, fullLength);
+                IntPtr insertAddr = memAddr + curLength;
+
+                //insert item
+                if (typeof(T) == typeof(byte))
+                    MemByte.Set(ref insertAddr, Convert.ToByte(item));
+                else if (typeof(T) == typeof(Int16))
+                    MemInt16.Set(ref insertAddr, Convert.ToInt16(item));
+                else if (typeof(T) == typeof(Int32))
+                    MemInt32.Set(ref insertAddr, Convert.ToInt32(item));
+                else if (typeof(T) == typeof(Int64))
+                    MemInt64.Set(ref insertAddr, Convert.ToInt64(item));
+                else if (typeof(T) == typeof(String))
+                {
+                    IntPtr newAddr = IntPtr.Zero;
+                    if (block.GetNewSpace(ref insertAddr, (item as string).Length, out newAddr) == false)
+                        return false;
+                    if (MemString.Set(newAddr, item as string, block) == false)
+                        return false;
+                }
+                else
+                {
+                    IntPtr newAddr = IntPtr.Zero;
+                    if (block.GetNewSpace(ref insertAddr, (item as Structure).Length, out newAddr) == false)
+                        return false;
+                    if (structureHelper.Set(newAddr, item as Structure, block) == false)
+                        return false;
+                }
+
+                //update isFull
+                if (memAddr + fullLength == insertAddr)
+                {
+                    MemStatus.SetIsFull(statusAddr, true);
+                }
+            }
+
+            return true;
+        }
+
+        public static unsafe bool Remove<T>(IntPtr memAddr, int index, Block block, StructureHelper structureHelper = null)
+        {
+            //get the length of T
+            int sizeofT = typeof(T).IsValueType ? MemTool.GetValueTypeSize(typeof(T)) : sizeof(Int32);
+
+            //get status
+            IntPtr statusAddr = memAddr;
+            byte status = MemByte.Get(ref memAddr);
+
+            //get list byteLength
+            Int16 fullLength = MemInt16.Get(ref memAddr);
+
+            //get the distance of index item
+            int indexDistance = sizeofT * index;
+
+            //get the real length of body
+            Int16 bodyLength = MemStatus.GetIsFull(status) ? fullLength : MemTool.GetCurLength(memAddr, fullLength);
+
+            if (bodyLength > indexDistance)
+            {
+                //remove the item
+                IntPtr removeAddr = memAddr + indexDistance;
+                if (typeof(T).IsValueType == true)
+                    removeAddr += sizeofT;
+                else if (typeof(T) == typeof(String))
+                {
+                    IntPtr newAddr = MemTool.GetAddrByOffsetAddr(removeAddr);
+                    if (MemString.Delete(newAddr, block) == false)
+                        return false;
+                }
+                else
+                {
+                    IntPtr newAddr = MemTool.GetAddrByOffsetAddr(removeAddr);
+                    if (structureHelper.Delete(newAddr, block) == false)
+                        return false;
+                }
+
+                //move other items forward
+                MemTool.Memcpy(memAddr.ToPointer(), removeAddr.ToPointer(), bodyLength);
+
+                //update curLength
+                IntPtr curLengthAddr = MemTool.GetCurLengthAddr(memAddr, fullLength);
+                MemInt16.Set(ref curLengthAddr, (Int16)(bodyLength - sizeofT));
+
+                //set isFull=false
+                if (MemStatus.GetIsFull(status) == true)
+                    MemStatus.SetIsFull(statusAddr, false);
+            }
+            else
+            {
+                int nextIndex = index - bodyLength / sizeofT;
+
+                IntPtr nextOffsetAddr = MemTool.GetNextOffsetAddr(memAddr, fullLength);
+                IntPtr newAddr = MemTool.GetAddrByOffsetAddr(nextOffsetAddr);
+
+                return Remove<T>(newAddr, nextIndex, block, structureHelper);
+            }
+
+            return true;
+        }
+    }
+
+    public class Structure : IComparable
+    {
+        public int Length;
+
+        //IComparable
+        public virtual int CompareTo(object obj)
+        {
+            return 0;
+        }
+    }
+
+    //user defined structure operation
+    public interface StructureHelper
+    {
+        //get with addr
+        Structure Get(IntPtr memAddr, int[] headerIndexs = null);
+
+        //set with addr
+        bool Set(IntPtr memAddr, Structure source, Block block, int[] headerIndexs = null);
+
+        //delete with addr
+        bool Delete(IntPtr memAddr, Block block);
     }
 }

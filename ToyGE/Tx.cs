@@ -863,7 +863,7 @@ namespace ToyGE
 
         public static void DeleteIn(ref IntPtr memAddr, IntPtr[] freeAddrs)
         {
-            IntPtr offsetMemAddr = MemTool.GetAddrByAddrBeforeOffset(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetAddrByNextOffsetAddr(ref memAddr);
 
             //jump status
             offsetMemAddr = offsetMemAddr + 1;

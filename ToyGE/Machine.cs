@@ -12,23 +12,23 @@ namespace ToyGE
     
 
     //index node type
-    public class MachineIndex<K>
+    public class BlockMap<K>
     {
         public UInt32 machineIP;   //IP address
-        public Block<K> block;  //block info
+        public Block block;  //block
     }
 
-    public class Machines<K>
+    public class Machine<K>
     {
         public int BlockSize = 0;
 
         //machine indexs, <hashBegin, MachineIndex>
-        public Dictionary<Int16, MachineIndex<K>> machineIndexs = new Dictionary<Int16, MachineIndex<K>>();
+        public Dictionary<Int16, BlockMap<K>> machineIndexs = new Dictionary<Int16, BlockMap<K>>();
 
         public string ConfigurationManager { get; private set; }
 
         //init machines, machineInventory is ip and memory space
-        public Machines(int blockSize, Dictionary<UInt32, int> machineInventory)
+        public Machine(int blockSize, Dictionary<UInt32, int> machineInventory)
         {
             this.BlockSize = blockSize;
             Int16 indexBegin = 0;
@@ -67,7 +67,7 @@ namespace ToyGE
             for (int i = 0; i < blockCount; i++)
             {
                 //add block into machineIndex
-                MachineIndex<K> index = new MachineIndex<K>();
+                BlockMap<K> index = new BlockMap<K>();
                 index.machineIP = machineIP;
 
                 index.block = new Block<K>(blockSize);        //alloc block
@@ -77,7 +77,7 @@ namespace ToyGE
         }
 
         //get addr and block info by key
-        public static bool Get(Dictionary<Int16, MachineIndex<K>> machineIndexs, K key, Delegate<K>.CompareT compare, out IntPtr cellAddr, out MachineIndex<K> machineIndex)
+        public static bool Get(Dictionary<Int16, BlockMap<K>> machineIndexs, K key, Delegate<K>.CompareT compare, out IntPtr cellAddr, out BlockMap<K> machineIndex)
         {
             //search in machineIndex and get machineID and blockInfo
             Int16 hash = (Int16)key.GetHashCode();
@@ -88,7 +88,7 @@ namespace ToyGE
                 if (item.Key < hash && item.Key >= closest)
                     closest = item.Key;
             }
-            MachineIndex<K> index = machineIndexs[closest];
+            BlockMap<K> index = machineIndexs[closest];
 
             //get index
             machineIndex = index;

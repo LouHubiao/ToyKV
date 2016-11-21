@@ -17,7 +17,7 @@ namespace ToyGE
     class Program
     {
         //machines info
-        static Machines<Int64> machines;
+        static Machine<Int64> machines;
 
         //group count of txs for pre set
         static int txsGroupCount = 50;
